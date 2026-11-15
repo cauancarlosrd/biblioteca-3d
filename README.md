@@ -1,36 +1,52 @@
 # Biblioteca 3D
 
-Uma biblioteca navegável em 3D (Three.js) para a sua pasta de livros. Ande entre as estantes, deixe o acaso escolher, puxe um livro e leia.
+Uma biblioteca navegável em 3D feita a partir da sua pasta de livros. Você anda entre as estantes, puxa um livro e lê ali mesmo. Também pode deixar o acaso escolher o próximo.
 
-**Seus livros nunca saem do seu computador.** O site só lê a pasta que você escolhe, localmente no navegador. Nada é enviado.
+**Os livros nunca saem do seu computador.** O site só tem o código. Quando você escolhe uma pasta, o navegador lê os arquivos localmente, e nada é enviado pra lugar nenhum.
 
-## Usar
+## Como usar
 
-- **Escolher pasta de livros:** cada subpasta vira uma estante. Formatos: pdf, epub, djvu, mobi, azw3, cbz, cbr.
-- **Arrastar** livros ou pastas para a janela também funciona (e soma à biblioteca aberta).
-- **🎲 Livro do acaso:** sorteia um livro, favorecendo os que você nunca abriu, e voa até ele.
-- **🔀 Nova ordem:** embaralha estantes e livros. A ordem fica no `?seed=` da URL, dá pra compartilhar ou voltar.
-- **Controles:** WASD/setas andam, Shift corre, arrastar olha, roda do mouse avança, clique abre o livro, Esc devolve.
-- `?demo` carrega uma biblioteca de demonstração.
+1. Abra o site e clique em **Escolher pasta de livros**, ou arraste livros e pastas pra janela.
+2. Cada subpasta vira uma estante.
+3. Pra se mover:
+   - **W A S D** ou as setas andam (Shift corre);
+   - **arrastar** com o mouse olha em volta;
+   - a **roda do mouse** avança.
+4. **Clique num livro** pra puxá-lo da estante e abrir. Esc ou "Devolver" põe o livro de volta.
+5. **🎲 Livro do acaso** sorteia um livro e voa até ele. O sorteio favorece os que você nunca abriu.
+6. **🔀 Nova ordem** embaralha a biblioteca. A ordem vem da `?seed=` na URL, então dá pra guardar ou compartilhar um arranjo.
 
-No Chrome/Edge o app lembra a última pasta. No Firefox, escolha a pasta a cada visita.
+Navegadores:
 
-## Desenvolver
+- No **Chrome e no Edge**, o site lembra a pasta. Na próxima visita aparece o botão "Reabrir".
+- No **Firefox**, você escolhe a pasta de novo a cada visita.
+- PDFs abrem no leitor do próprio navegador. EPUB, DJVU, MOBI e CBZ aparecem nas estantes e abrem fora, por enquanto.
+
+## Desenvolvimento
 
 ```bash
 npm install
-npm run dev
+npm run dev      # http://localhost:5173  (use ?demo pra carregar livros falsos)
+npm run build    # gera dist/
 ```
+
+A cada push na `main`, o GitHub Actions publica o site no GitHub Pages (`.github/workflows/deploy.yml`).
 
 ## Estrutura
 
 ```
 src/
-  library/   leitura da pasta, arrastar-e-soltar, demo
-  scene/     estantes, livros (InstancedMesh), controles, animações
-  random/    seed, embaralhamento, livro do acaso, histórico
-  viewer/    visualizador (PDF nativo do navegador no MVP)
-docs/IDEIA.md  visão e fases do projeto
+  library/   leitura da pasta, arrastar-e-soltar, lembrar a pasta (IndexedDB)
+  scene/     estantes, livros (InstancedMesh), controles, animação de puxar
+  random/    seed, embaralhamento, sorteio com peso, histórico de leitura
+  viewer/    sobreposição com o leitor
 ```
 
-Deploy automático no GitHub Pages a cada push na `main` (`.github/workflows/deploy.yml`).
+## Roteiro
+
+Veja [docs/IDEIA.md](docs/IDEIA.md).
+
+- [x] **Fase 1 — MVP:** pasta → estantes → clicar → ler, mais o livro do acaso e a seed
+- [ ] **Fase 2 — Biblioteca:** salas por área, capas reais (pdf.js), cache de metadados
+- [ ] **Fase 3 — Acaso:** mesa de leitura, rastro de luz, histórico mais rico
+- [ ] **Fase 4 — Acabamento:** leitor de EPUB, texto nas lombadas, busca, planta baixa, celular
