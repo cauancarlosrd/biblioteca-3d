@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import { hash } from '../random/acaso.js';
 import { criarCeu } from './ceu.js';
 import { criarChao } from './chao.js';
+import { criarMagia } from './magia.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 // Dimensões em metros
 const CASE_W = 2.4;
@@ -11,7 +16,10 @@ const PRATELEIRAS = 6;
 const TABUA = 0.04;
 const VAO = (CASE_H - TABUA) / PRATELEIRAS;
 const CORREDOR = 1.8; // metade da largura do corredor
-const PASSO = CASE_W + 0.12;
+const ESPACO = 0.12; // entre estantes vizinhas
+const PASSO = CASE_W + ESPACO;
+// formatos de estante [largura, prateleiras], do menor pro maior
+const FORMATOS = [[1.2, 2], [1.2, 3], [1.2, 4], [1.8, 3], [1.8, 4], [1.8, 5], [2.4, 5], [2.4, 6]];
 const OLHO = 1.55;
 
 const tmpM = new THREE.Matrix4();
@@ -106,9 +114,14 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   const luar = new THREE.DirectionalLight(0x9aa6ff, 0.5);
   luar.position.set(-3, 10, 4);
   cena.add(luar);
-  const lanterna = new THREE.PointLight(0xffcf8f, 5, 10, 1.4);
-  lanterna.position.set(0, 0.3, 0);
-  camera.add(lanterna);
+  const magia = criarMagia(cena, camera, renderer);
+
+  // pós-processamento: bloom faz o que é muito claro (estrelas, orbe, placas) brilhar
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(cena, camera));
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.55, 0.82);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
 
   const geoCaixa = new THREE.BoxGeometry(1, 1, 1);
   const matLivro = new THREE.MeshStandardMaterial({ map: texturaLivro(), roughness: 0.7 });
@@ -118,7 +131,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   const brilho = new THREE.Mesh(
     geoCaixa,
     new THREE.MeshBasicMaterial({
-      color: 0xffc46a,
+      color: new THREE.Color(2.4, 1.6, 0.7),
       transparent: true,
       opacity: 0.5,
       blending: THREE.AdditiveBlending,
@@ -128,6 +141,21 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   brilho.matrixAutoUpdate = false;
   brilho.visible = false;
   cena.add(brilho);
+
+  // brilho suave no livro sob o mouse
+  const realce = new THREE.Mesh(
+    geoCaixa,
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color(1.0, 0.75, 0.4),
+      transparent: true,
+      opacity: 0.22,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  realce.matrixAutoUpdate = false;
+  realce.visible = false;
+  cena.add(realce);
   const luzDestaque = new THREE.PointLight(0xffb85c, 0, 3, 1.5);
   cena.add(luzDestaque);
 
@@ -136,7 +164,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   let livros = [];
   let dados = []; // { matriz, normal, posicao }
   let malha = null;
-  let fileiras = 1;
+  let comprimento = PASSO;
   let destacado = -1;
   let puxado = null; // { i, mesh, ida: {p0,q0,p1,p2,q2,s} }
   let animacoes = [];
@@ -158,22 +186,30 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
 
     const tabuas = [];
     let estante = -1;
-    let matrizEstante = null;
-    let lado = 1;
-    let prat = 0;
-    let x = 0;
-    const xMin = -CASE_W / 2 + TABUA + 0.01;
-    const xMax = CASE_W / 2 - TABUA - 0.01;
+    const cursorLado = { [-1]: 0, [1]: 0 }; // quanto cada lado do corredor já ocupou (em z)
 
-    function novaEstante(pasta, continuacao) {
+    // dimensões de cada livro (determinísticas pelo id)
+    const dims = lista.map((livro) => {
+      const hh = hash(livro.id);
+      return {
+        espessura: Math.min(0.09, Math.max(0.025, 0.018 + Math.sqrt(livro.tamanho / 1e6) * 0.011)),
+        altura: 0.25 + (hh % 100) / 900,
+        prof: 0.18 + ((hh >> 8) % 80) / 1000,
+      };
+    });
+    const ocupa = (d) => d.espessura + 0.002;
+    const util = (w) => w - 2 * TABUA - 0.02; // largura útil de uma prateleira
+
+    // monta uma estante de largura w e n prateleiras ao lado do corredor menos ocupado
+    function novaEstante(pasta, continuacao, w, n) {
       estante++;
-      lado = estante % 2 === 0 ? -1 : 1;
-      const fileira = Math.floor(estante / 2);
-      const pos = new THREE.Vector3(lado * (CORREDOR + CASE_D / 2), 0, -fileira * PASSO - CASE_W / 2);
+      const lado = cursorLado[-1] <= cursorLado[1] ? -1 : 1;
+      const z = -(cursorLado[lado] + w / 2);
+      cursorLado[lado] += w + ESPACO;
+      const altura = n * VAO + TABUA;
+      const posE = new THREE.Vector3(lado * (CORREDOR + CASE_D / 2), 0, z);
       const q = new THREE.Quaternion().setFromAxisAngle(EIXO_Y, lado < 0 ? Math.PI / 2 : -Math.PI / 2);
-      matrizEstante = new THREE.Matrix4().compose(pos, q, new THREE.Vector3(1, 1, 1));
-      prat = 0;
-      x = xMin;
+      const matrizEstante = new THREE.Matrix4().compose(posE, q, new THREE.Vector3(1, 1, 1));
 
       const local = (px, py, pz, sx, sy, sz) =>
         tabuas.push(
@@ -181,50 +217,78 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
             new THREE.Vector3(px, py, pz), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz),
           )),
         );
-      local(-CASE_W / 2 + TABUA / 2, CASE_H / 2, 0, TABUA, CASE_H, CASE_D);
-      local(CASE_W / 2 - TABUA / 2, CASE_H / 2, 0, TABUA, CASE_H, CASE_D);
-      local(0, CASE_H / 2, -CASE_D / 2 + TABUA / 2, CASE_W, CASE_H, TABUA);
-      for (let k = 0; k <= PRATELEIRAS; k++) local(0, k * VAO + TABUA / 2, 0, CASE_W, TABUA, CASE_D);
+      local(-w / 2 + TABUA / 2, altura / 2, 0, TABUA, altura, CASE_D);
+      local(w / 2 - TABUA / 2, altura / 2, 0, TABUA, altura, CASE_D);
+      local(0, altura / 2, -CASE_D / 2 + TABUA / 2, w, altura, TABUA);
+      for (let k = 0; k <= n; k++) local(0, k * VAO + TABUA / 2, 0, w, TABUA, CASE_D);
 
       const { texto, sub } = rotuloDaPasta(pasta);
+      const larguraPlaca = Math.max(1.1, w * 0.9);
       const placa = new THREE.Mesh(
-        new THREE.PlaneGeometry(CASE_W * 0.9, CASE_W * 0.9 * (160 / 1024)),
-        new THREE.MeshBasicMaterial({ map: texturaRotulo(continuacao ? `${texto} (cont.)` : texto, sub), fog: true }),
+        new THREE.PlaneGeometry(larguraPlaca, larguraPlaca * (160 / 1024)),
+        // cor acima de 1: o texto dourado passa do limiar do bloom e brilha
+        new THREE.MeshBasicMaterial({
+          map: texturaRotulo(continuacao ? `${texto} (cont.)` : texto, sub),
+          color: new THREE.Color(1.6, 1.5, 1.35),
+          fog: true,
+        }),
       );
-      placa.applyMatrix4(matrizEstante.clone().multiply(new THREE.Matrix4().makeTranslation(0, CASE_H + 0.2, CASE_D / 2)));
+      placa.applyMatrix4(matrizEstante.clone().multiply(new THREE.Matrix4().makeTranslation(0, altura + 0.2, CASE_D / 2)));
       grupo.add(placa);
+      return { matrizEstante, lado };
     }
 
-    let pastaAtual = null;
-    for (const livro of lista) {
-      const espessura = Math.min(0.09, Math.max(0.025, 0.018 + Math.sqrt(livro.tamanho / 1e6) * 0.011));
-      const hh = hash(livro.id);
-      const altura = 0.25 + (hh % 100) / 900;
-      const prof = 0.18 + ((hh >> 8) % 80) / 1000;
+    // escolhe o menor formato que comporta os livros com folga
+    function formato(total) {
+      for (const [w, n] of FORMATOS) if (util(w) * n >= total * 1.15 + 0.05 * n) return [w, n];
+      return FORMATOS[FORMATOS.length - 1];
+    }
 
-      if (livro.pasta !== pastaAtual) {
-        pastaAtual = livro.pasta;
-        novaEstante(livro.pasta, false);
-      } else if (x + espessura > xMax) {
-        prat++;
-        x = xMin;
-        if (prat >= PRATELEIRAS) novaEstante(livro.pasta, true);
+    // agrupa índices por pasta (a lista já vem agrupada) e quebra pastas grandes em blocos
+    const capacidadeMax = util(CASE_W) * PRATELEIRAS * 0.85;
+    const blocos = [];
+    for (let i = 0; i < lista.length; i++) {
+      const ultimo = blocos[blocos.length - 1];
+      const mesma = ultimo && lista[ultimo.idx[0]].pasta === lista[i].pasta;
+      if (mesma && ultimo.total + ocupa(dims[i]) <= capacidadeMax) {
+        ultimo.idx.push(i);
+        ultimo.total += ocupa(dims[i]);
+      } else {
+        blocos.push({ idx: [i], total: ocupa(dims[i]), continuacao: mesma });
       }
-      const base = (PRATELEIRAS - 1 - prat) * VAO + TABUA;
-      const local = new THREE.Matrix4().compose(
-        new THREE.Vector3(x + espessura / 2, base + altura / 2, CASE_D / 2 - prof / 2 - 0.015),
-        new THREE.Quaternion(),
-        new THREE.Vector3(espessura, altura, prof),
-      );
-      x += espessura + 0.002;
-      const matriz = matrizEstante.clone().multiply(local);
-      dados.push({
-        matriz,
-        normal: new THREE.Vector3(-lado, 0, 0),
-        posicao: new THREE.Vector3().setFromMatrixPosition(matriz),
-      });
     }
-    fileiras = Math.floor(estante / 2) + 1;
+
+    for (const bloco of blocos) {
+      const [w, n] = formato(bloco.total);
+      const { matrizEstante, lado } = novaEstante(lista[bloco.idx[0]].pasta, bloco.continuacao, w, n);
+      const xMin = -w / 2 + TABUA + 0.01;
+      const xMax = w / 2 - TABUA - 0.01;
+      const meta = bloco.total / n; // distribui igualmente entre as prateleiras
+      let prat = 0;
+      let x = xMin;
+      for (const i of bloco.idx) {
+        const { espessura, altura, prof } = dims[i];
+        const cheia = x + espessura > xMax || (x - xMin + espessura / 2 > meta && prat < n - 1);
+        if (cheia && x > xMin) {
+          prat++;
+          x = xMin;
+        }
+        const base = (n - 1 - Math.min(prat, n - 1)) * VAO + TABUA;
+        const local = new THREE.Matrix4().compose(
+          new THREE.Vector3(x + espessura / 2, base + altura / 2, CASE_D / 2 - prof / 2 - 0.015),
+          new THREE.Quaternion(),
+          new THREE.Vector3(espessura, altura, prof),
+        );
+        x += ocupa(dims[i]);
+        const matriz = matrizEstante.clone().multiply(local);
+        dados[i] = {
+          matriz,
+          normal: new THREE.Vector3(-lado, 0, 0),
+          posicao: new THREE.Vector3().setFromMatrixPosition(matriz),
+        };
+      }
+    }
+    comprimento = Math.max(cursorLado[-1], cursorLado[1]);
 
     const tabuasMesh = new THREE.InstancedMesh(geoCaixa, matMadeira, tabuas.length);
     tabuas.forEach((m, i) => tabuasMesh.setMatrixAt(i, m));
@@ -301,7 +365,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     pos.x += -Math.sin(yaw) * frente + Math.cos(yaw) * direita;
     pos.z += -Math.cos(yaw) * frente - Math.sin(yaw) * direita;
     pos.x = Math.max(-CORREDOR + 0.35, Math.min(CORREDOR - 0.35, pos.x));
-    pos.z = Math.max(-fileiras * PASSO - 0.5, Math.min(5, pos.z));
+    pos.z = Math.max(-comprimento - 0.5, Math.min(5, pos.z));
   }
 
   // ---------------- seleção ----------------
@@ -416,6 +480,8 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setSize(w, h);
     chao.redimensionar();
   }
   addEventListener('resize', redimensionar);
@@ -453,6 +519,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     camera.rotation.set(pitch, yaw, 0);
     ceu.atualizar(relogio.elapsedTime, camera.position);
     chao.atualizar(relogio.elapsedTime, camera.position);
+    magia.atualizar(dt, relogio.elapsedTime);
 
     for (const a of animacoes) {
       a.t = Math.min(a.dur, a.t + dt);
@@ -471,11 +538,19 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
       if (i !== ultimoHover) {
         ultimoHover = i;
         canvas.style.cursor = i >= 0 ? 'pointer' : 'grab';
+        realce.visible = i >= 0;
+        if (i >= 0) {
+          dados[i].matriz.decompose(tmpV, tmpQ, tmpS);
+          realce.matrix.compose(tmpV, tmpQ, tmpS.multiplyScalar(1.06));
+        }
       }
       aoPassar?.(i, ponteiro.x, ponteiro.y);
+    } else if (realce.visible && (pausado || !ponteiro)) {
+      realce.visible = false;
+      ultimoHover = -1;
     }
 
-    renderer.render(cena, camera);
+    composer.render();
   });
 
   return {
