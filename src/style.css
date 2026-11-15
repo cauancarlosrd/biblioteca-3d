@@ -3,7 +3,7 @@
   --tinta: #2a1c12;
   --madeira: #3b2817;
   --ouro: #d9a75a;
-  --fundo: #120d09;
+  --fundo: #05040d;
   color-scheme: dark;
 }
 
@@ -25,7 +25,7 @@ button.primario { background: var(--ouro); color: var(--tinta); border-color: va
 .botoes { display: flex; gap: 8px; flex-wrap: wrap; }
 
 #inicio { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
-  background: radial-gradient(ellipse at center, #2a1c12 0%, var(--fundo) 70%); }
+  background: radial-gradient(ellipse at 30% 20%, rgba(90, 40, 140, 0.35), transparent 55%), radial-gradient(ellipse at 75% 80%, rgba(20, 70, 120, 0.3), transparent 50%), var(--fundo); }
 .cartao { max-width: 520px; text-align: center; }
 .cartao h1 { font-size: clamp(42px, 9vw, 72px); font-weight: 400; letter-spacing: 0.04em; margin: 0 0 8px; color: var(--ouro); }
 .lema { font-style: italic; opacity: 0.85; margin: 0 0 28px; }
@@ -36,7 +36,7 @@ body.soltando #inicio, body.soltando #cena { outline: 3px dashed var(--ouro); ou
 
 #hud { position: fixed; top: 0; left: 0; right: 0; padding: 12px 16px; display: flex; flex-wrap: wrap;
   align-items: center; justify-content: space-between; gap: 8px; pointer-events: none;
-  background: linear-gradient(rgba(18, 13, 9, 0.85), transparent); }
+  background: linear-gradient(rgba(5, 4, 13, 0.85), transparent); }
 #hud > * { pointer-events: auto; }
 #info { font-size: 14px; opacity: 0.8; }
 .ajuda { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 13px; opacity: 0.5; margin: 0; pointer-events: none; }

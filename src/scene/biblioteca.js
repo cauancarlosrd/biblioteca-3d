@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { hash } from '../random/acaso.js';
+import { criarCeu } from './ceu.js';
+import { criarChao } from './chao.js';
 
 // Dimensões em metros
 const CASE_W = 2.4;
@@ -87,24 +89,26 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   renderer.toneMappingExposure = 1.1;
 
   const cena = new THREE.Scene();
-  cena.background = new THREE.Color(0x120d09);
-  cena.fog = new THREE.Fog(0x120d09, 6, 26);
+  cena.background = new THREE.Color(0x03020a);
+  // a névoa só apaga as estantes distantes; céu e estrelas ignoram névoa
+  cena.fog = new THREE.Fog(0x07061a, 10, 48);
 
-  const camera = new THREE.PerspectiveCamera(65, 1, 0.05, 100);
+  const camera = new THREE.PerspectiveCamera(65, 1, 0.05, 400);
   camera.rotation.order = 'YXZ';
   cena.add(camera);
 
-  cena.add(new THREE.HemisphereLight(0xffe2b8, 0x1a120c, 0.9));
+  const ceu = criarCeu();
+  cena.add(ceu.grupo);
+  const chao = criarChao(renderer);
+  cena.add(chao.grupo);
+
+  cena.add(new THREE.HemisphereLight(0xb4bcff, 0x24163f, 0.75));
+  const luar = new THREE.DirectionalLight(0x9aa6ff, 0.5);
+  luar.position.set(-3, 10, 4);
+  cena.add(luar);
   const lanterna = new THREE.PointLight(0xffcf8f, 5, 10, 1.4);
   lanterna.position.set(0, 0.3, 0);
   camera.add(lanterna);
-
-  const chao = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400),
-    new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.85 }),
-  );
-  chao.rotation.x = -Math.PI / 2;
-  cena.add(chao);
 
   const geoCaixa = new THREE.BoxGeometry(1, 1, 1);
   const matLivro = new THREE.MeshStandardMaterial({ map: texturaLivro(), roughness: 0.7 });
@@ -412,6 +416,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    chao.redimensionar();
   }
   addEventListener('resize', redimensionar);
   redimensionar();
@@ -446,6 +451,8 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     }
     camera.position.copy(pos);
     camera.rotation.set(pitch, yaw, 0);
+    ceu.atualizar(relogio.elapsedTime, camera.position);
+    chao.atualizar(relogio.elapsedTime, camera.position);
 
     for (const a of animacoes) {
       a.t = Math.min(a.dur, a.t + dt);
