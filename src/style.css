@@ -1,0 +1,63 @@
+:root {
+  --papel: #f1e4cc;
+  --tinta: #2a1c12;
+  --madeira: #3b2817;
+  --ouro: #d9a75a;
+  --fundo: #120d09;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fundo); color: var(--papel);
+  font-family: Georgia, 'Iowan Old Style', serif; }
+
+#cena { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+
+[hidden] { display: none !important; }
+
+button, .vis-nova-aba {
+  font: inherit; font-size: 15px; color: var(--papel); background: rgba(59, 40, 23, 0.85);
+  border: 1px solid rgba(217, 167, 90, 0.45); border-radius: 6px; padding: 8px 14px; cursor: pointer;
+  text-decoration: none; white-space: nowrap;
+}
+button:hover, .vis-nova-aba:hover { border-color: var(--ouro); }
+button.primario { background: var(--ouro); color: var(--tinta); border-color: var(--ouro); font-weight: 600; }
+.botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+#inicio { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px;
+  background: radial-gradient(ellipse at center, #2a1c12 0%, var(--fundo) 70%); }
+.cartao { max-width: 520px; text-align: center; }
+.cartao h1 { font-size: clamp(42px, 9vw, 72px); font-weight: 400; letter-spacing: 0.04em; margin: 0 0 8px; color: var(--ouro); }
+.lema { font-style: italic; opacity: 0.85; margin: 0 0 28px; }
+.cartao .botoes { justify-content: center; }
+.nota { font-size: 14px; opacity: 0.65; margin-top: 24px; line-height: 1.5; }
+#status { min-height: 1.4em; color: var(--ouro); }
+body.soltando #inicio, body.soltando #cena { outline: 3px dashed var(--ouro); outline-offset: -12px; }
+
+#hud { position: fixed; top: 0; left: 0; right: 0; padding: 12px 16px; display: flex; flex-wrap: wrap;
+  align-items: center; justify-content: space-between; gap: 8px; pointer-events: none;
+  background: linear-gradient(rgba(18, 13, 9, 0.85), transparent); }
+#hud > * { pointer-events: auto; }
+#info { font-size: 14px; opacity: 0.8; }
+.ajuda { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 13px; opacity: 0.5; margin: 0; pointer-events: none; }
+
+#dica { position: fixed; top: 0; left: 0; max-width: 320px; pointer-events: none; background: rgba(241, 228, 204, 0.95);
+  color: var(--tinta); padding: 8px 12px; border-radius: 4px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); font-size: 14px; }
+#dica b { display: block; margin-bottom: 2px; }
+#dica span { font-size: 12px; opacity: 0.7; font-style: italic; }
+
+#visualizador { position: fixed; inset: 3vh 3vw; display: flex; flex-direction: column; background: var(--papel); color: var(--tinta);
+  border-radius: 8px; box-shadow: 0 20px 80px rgba(0, 0, 0, 0.8); overflow: hidden; animation: surgir 0.25s ease-out; }
+@keyframes surgir { from { opacity: 0; transform: scale(0.97); } }
+#visualizador header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--madeira); color: var(--papel); }
+#visualizador header > div { flex: 1; min-width: 0; }
+.vis-titulo { margin: 0; font-size: 18px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vis-pasta { font-size: 12px; opacity: 0.7; font-style: italic; }
+.vis-corpo { flex: 1; display: grid; }
+.vis-corpo iframe { width: 100%; height: 100%; border: 0; }
+.vis-msg { place-self: center; text-align: center; padding: 24px; line-height: 1.6; }
+
+@media (max-width: 600px) {
+  #visualizador { inset: 0; border-radius: 0; }
+  .ajuda { display: none; }
+}

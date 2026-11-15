@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Biblioteca 3D</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>" />
+  </head>
+  <body>
+    <canvas id="cena"></canvas>
+
+    <section id="inicio">
+      <div class="cartao">
+        <h1>Biblioteca</h1>
+        <p class="lema">Ande entre as estantes. Puxe o que chamar sua atenção.</p>
+        <div class="botoes">
+          <button id="btn-pasta" class="primario">Escolher pasta de livros</button>
+          <button id="btn-reabrir" hidden></button>
+          <button id="btn-demo">Ver demonstração</button>
+        </div>
+        <p class="nota">…ou arraste livros e pastas pra esta janela.<br />
+          Os arquivos são lidos só pelo seu navegador e nunca saem do seu computador.</p>
+        <p id="status"></p>
+        <input id="input-pasta" type="file" webkitdirectory multiple hidden />
+      </div>
+    </section>
+
+    <header id="hud" hidden>
+      <span id="info"></span>
+      <div class="botoes">
+        <button id="btn-acaso" class="primario" title="Sorteia um livro, de preferência um que você nunca abriu">🎲 Livro do acaso</button>
+        <button id="btn-ordem" title="Embaralha a biblioteca (nova seed)">🔀 Nova ordem</button>
+        <button id="btn-trocar">📁 Pasta</button>
+      </div>
+      <p class="ajuda">WASD / setas pra andar · Shift corre · arraste pra olhar · roda do mouse avança · clique num livro</p>
+    </header>
+
+    <div id="dica" hidden></div>
+
+    <section id="visualizador" hidden>
+      <header>
+        <div>
+          <h2 class="vis-titulo"></h2>
+          <span class="vis-pasta"></span>
+        </div>
+        <a class="vis-nova-aba" target="_blank" rel="noopener">Abrir fora</a>
+        <button class="vis-fechar" title="Devolver à estante (Esc)">Devolver ✕</button>
+      </header>
+      <div class="vis-corpo"></div>
+    </section>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

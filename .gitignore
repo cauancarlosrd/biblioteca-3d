@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.tmp/
+# plano de organização dos livros: lista arquivos pessoais, não vai pro repo
+organizacao/
