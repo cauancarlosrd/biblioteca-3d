@@ -306,19 +306,143 @@ function aparador() {
   return { obj: g, largura: 0.02 };
 }
 
-const MODELOS = { esferaArmilar, luminariaLua, pilhaDeLivros, planta, ampulheta, holograma };
+// --- adereços góticos ------------------------------------------------------
+const matsGoticos = {
+  cera: new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.55, emissive: 0x2a1808 }),
+  chama: new THREE.MeshBasicMaterial({ color: new THREE.Color(2.0, 0.95, 0.32) }),
+  osso: new THREE.MeshStandardMaterial({ color: 0xcfc3a6, roughness: 0.75 }),
+  oco: new THREE.MeshStandardMaterial({ color: 0x120c08, roughness: 1 }),
+  pergaminho: new THREE.MeshStandardMaterial({ color: 0xd8c9a3, roughness: 0.85, side: THREE.DoubleSide }),
+  fita: new THREE.MeshStandardMaterial({ color: 0x7a1a1a, roughness: 0.6 }),
+  tinta: new THREE.MeshStandardMaterial({ color: 0x0c0d18, roughness: 0.1, metalness: 0.2 }),
+  pena: new THREE.MeshStandardMaterial({ color: 0xf0ebe0, roughness: 0.8, side: THREE.DoubleSide }),
+};
+for (const m of Object.values(matsGoticos)) MATERIAIS_FIXOS.add(m);
+
+/** Castiçal de latão com vela gasta (chama tremula). */
+const geoCastical = torno([[0, 0], [0.055, 0], [0.058, 0.008], [0.03, 0.02], [0.014, 0.035], [0.012, 0.09], [0.022, 0.1], [0.012, 0.11], [0.03, 0.125], [0.034, 0.132], [0.02, 0.135], [0, 0.135]]);
+function castical(rnd) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geoCastical, materiais.latao));
+  const h = 0.06 + rnd() * 0.08;
+  g.add(malha(geo.cilindro, matsGoticos.cera, 0, 0.135 + h / 2, 0, 0.016, h, 0.016));
+  // pingos de cera escorrendo
+  for (let i = 0; i < 3; i++) {
+    const a = rnd() * Math.PI * 2;
+    g.add(malha(geo.esfera, matsGoticos.cera, Math.cos(a) * 0.016, 0.135 + h * (0.4 + rnd() * 0.5), Math.sin(a) * 0.016, 0.006, 0.014, 0.006));
+  }
+  const fogo = malha(geo.esfera, matsGoticos.chama, 0, 0.135 + h + 0.02, 0, 0.008, 0.022, 0.008);
+  g.add(fogo);
+  const fase = rnd() * 10;
+  return {
+    obj: g,
+    largura: 0.12,
+    animar: (t) => {
+      const f = 1 + Math.sin(t * 12 + fase) * 0.12 + Math.sin(t * 6.7 + fase) * 0.08;
+      fogo.scale.set(0.008 * (2 - f), 0.022 * f, 0.008 * (2 - f));
+    },
+  };
+}
+function parDeCasticais(rnd) {
+  const g = new THREE.Group();
+  const a = castical(rnd);
+  const b = castical(rnd);
+  a.obj.position.x = -0.07;
+  b.obj.position.set(0.07, 0, 0.02);
+  g.add(a.obj, b.obj);
+  return { obj: g, largura: 0.26, animar: (t) => (a.animar(t), b.animar(t)) };
+}
+
+/** Crânio de leitura (memento mori), apoiado sobre um livro deitado. */
+function cranio(rnd) {
+  const g = new THREE.Group();
+  const livro = livroDeitado(rnd, 0.22, 0.035, 0.17);
+  livro.position.y = 0.0175;
+  g.add(livro);
+  const c = new THREE.Group();
+  c.position.set(0, 0.035, 0);
+  c.rotation.y = (rnd() - 0.5) * 0.8;
+  c.add(malha(geo.esfera, matsGoticos.osso, 0, 0.085, -0.01, 0.07, 0.068, 0.082)); // calota
+  c.add(malha(geo.esfera, matsGoticos.osso, 0, 0.045, 0.03, 0.055, 0.045, 0.05)); // face
+  for (const sx of [-1, 1]) {
+    c.add(malha(geo.esfera, matsGoticos.oco, sx * 0.024, 0.06, 0.068, 0.017, 0.015, 0.01)); // órbitas
+    c.add(malha(geo.esfera, matsGoticos.osso, sx * 0.045, 0.04, 0.045, 0.018, 0.014, 0.02)); // maçãs
+  }
+  const nariz = malha(new THREE.ConeGeometry(1, 1, 3), matsGoticos.oco, 0, 0.038, 0.074, 0.009, 0.018, 0.006);
+  nariz.rotation.x = Math.PI;
+  c.add(nariz);
+  c.add(malha(geo.caixa, matsGoticos.osso, 0, 0.016, 0.052, 0.05, 0.018, 0.035)); // maxilar
+  for (let i = -3; i <= 3; i++) c.add(malha(geo.caixa, matsGoticos.oco, i * 0.0068, 0.02, 0.07, 0.0012, 0.012, 0.002)); // vãos dos dentes
+  g.add(c);
+  return { obj: g, largura: 0.24 };
+}
+
+/** Pergaminhos enrolados, um amarrado com fita. */
+function pergaminhos(rnd) {
+  const g = new THREE.Group();
+  const n = 3 + Math.floor(rnd() * 2);
+  for (let i = 0; i < n; i++) {
+    const comp = 0.16 + rnd() * 0.08;
+    const r = 0.016 + rnd() * 0.008;
+    const rolo = malha(geo.cilindro, matsGoticos.pergaminho, 0, 0, 0, r, comp, r);
+    rolo.rotation.z = Math.PI / 2;
+    // pirâmide: 2-3 embaixo, 1 em cima
+    const base = i < n - 1;
+    rolo.position.set((rnd() - 0.5) * 0.03, base ? r : 0.045, base ? (i - (n - 2) / 2) * 0.045 : 0);
+    rolo.rotation.y = (rnd() - 0.5) * 0.4;
+    g.add(rolo);
+    if (i === n - 1) {
+      // fita em volta do rolo (no espaço local do cilindro: raio 1, eixo y)
+      const fita = malha(new THREE.TorusGeometry(1, 0.15, 6, 16), matsGoticos.fita, 0, 0, 0, 1.06);
+      fita.rotation.x = Math.PI / 2;
+      rolo.add(fita);
+    }
+  }
+  return { obj: g, largura: 0.25 };
+}
+
+/** Tinteiro de vidro escuro com pena. */
+const geoTinteiro = torno([[0, 0], [0.036, 0], [0.04, 0.01], [0.04, 0.04], [0.02, 0.055], [0.014, 0.058], [0.014, 0.068], [0.018, 0.07], [0, 0.07]]);
+const geoPena = (() => {
+  const s = new THREE.Shape();
+  s.moveTo(0, 0);
+  s.quadraticCurveTo(0.02, 0.09, 0.006, 0.2);
+  s.quadraticCurveTo(-0.008, 0.12, 0, 0);
+  const g = new THREE.ShapeGeometry(s, 10);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setZ(i, 0.12 * (p.getY(i) / 0.2) ** 2 * 0.4);
+  g.computeVertexNormals();
+  return g;
+})();
+function tinteiro(rnd) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geoTinteiro, matsGoticos.tinta));
+  const pena = new THREE.Mesh(geoPena, matsGoticos.pena);
+  pena.position.set(0, 0.05, 0);
+  pena.rotation.set(-0.25, rnd() * Math.PI, 0.35);
+  g.add(pena);
+  // folha solta ao lado
+  const folha = malha(geo.caixa, matsGoticos.pergaminho, 0.1, 0.002, 0.01, 0.12, 0.003, 0.16);
+  folha.rotation.y = 0.3;
+  g.add(folha);
+  return { obj: g, largura: 0.24 };
+}
+
+const MODELOS = { esferaArmilar, luminariaLua, pilhaDeLivros, planta, ampulheta, holograma, castical, parDeCasticais, cranio, pergaminhos, tinteiro };
 
 // composições simétricas para prateleiras vazias: [modelo, posição relativa 0–1]
 const COMPOSICOES = [
-  [['luminariaLua', 0.5]],
+  [['castical', 0.15], ['cranio', 0.5], ['castical', 0.85]],
   [['pilhaDeLivros', 0.2], ['esferaArmilar', 0.78]],
-  [['planta', 0.22], ['holograma', 0.78]],
+  [['pergaminhos', 0.22], ['tinteiro', 0.75]],
   [['pilhaDeLivros', 0.14], ['ampulheta', 0.5], ['pilhaDeLivros', 0.86]],
+  [['planta', 0.25], ['luminariaLua', 0.72]],
+  [['parDeCasticais', 0.5]],
+  [['ampulheta', 0.25], ['pergaminhos', 0.75]],
+  [['planta', 0.22], ['holograma', 0.78]],
   [['esferaArmilar', 0.5]],
-  [['planta', 0.3], ['luminariaLua', 0.7]],
-  [['ampulheta', 0.25], ['pilhaDeLivros', 0.75]],
 ];
-const SOLO = ['planta', 'ampulheta', 'luminariaLua', 'pilhaDeLivros', 'esferaArmilar'];
+const SOLO = ['planta', 'castical', 'ampulheta', 'cranio', 'tinteiro', 'luminariaLua', 'pergaminhos', 'esferaArmilar'];
 
 /**
  * Decide os adereços de um vão de prateleira.

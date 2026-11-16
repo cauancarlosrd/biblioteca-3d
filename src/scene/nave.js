@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { texPedra, aplicarMapaMundo } from './texturas.js';
+import { texPedra, texMadeira, texRosacea, aplicarMapaMundo } from './texturas.js';
 
 // Nave de catedral gótica em ruínas, flutuando no espaço:
 // colunas em feixe, arcos ogivais, abóbada só de nervuras (o céu aparece entre elas),
@@ -20,7 +20,12 @@ aplicarMapaMundo(pedraEscura, texPedra, 1.4);
 const ferro = new THREE.MeshStandardMaterial({ color: 0x1b1a1c, metalness: 0.6, roughness: 0.55 });
 const cera = new THREE.MeshStandardMaterial({ color: 0xe6d8b8, roughness: 0.6, emissive: 0x2a1a08 });
 const chama = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.05, 0.35) });
-export const MATERIAIS_NAVE = [pedra, pedraEscura, ferro, cera, chama];
+const madeiraAtril = new THREE.MeshStandardMaterial({ color: 0xb8a898, roughness: 0.65 });
+aplicarMapaMundo(madeiraAtril, texMadeira, 0.8);
+const couro = new THREE.MeshStandardMaterial({ color: 0x4a1a14, roughness: 0.6 });
+const papel = new THREE.MeshStandardMaterial({ color: 0xd9ccb0, roughness: 0.9 });
+const vitral = new THREE.MeshBasicMaterial({ map: texRosacea, color: new THREE.Color(1.15, 1.1, 1.2), side: THREE.DoubleSide });
+export const MATERIAIS_NAVE = [pedra, pedraEscura, ferro, cera, chama, madeiraAtril, couro, papel, vitral];
 
 // ---------------------------------------------------------------------------
 // geometria de arco ogival
@@ -206,12 +211,196 @@ function lustre(alturaTeto) {
 }
 
 // ---------------------------------------------------------------------------
+// fundo da nave
+
+/** Parede do fundo: empena ogival, rosácea com vitral e arcada cega embaixo. */
+function paredeFundo(xParede, altura, yApice) {
+  const g = new THREE.Group();
+  const meio = xParede + 0.25;
+  const yRosa = 5.25;
+  const rRosa = 1.7;
+  const s = new THREE.Shape();
+  s.moveTo(-meio, 0);
+  s.lineTo(meio, 0);
+  s.lineTo(meio, altura);
+  // empena ogival até acima da abóbada
+  const empena = pontosOgiva(meio, meio * 1.25).reverse();
+  for (const p of empena) s.lineTo(p.x, altura + p.y * ((yApice + 1.6 - altura) / alturaOgiva(meio, meio * 1.25)));
+  s.lineTo(-meio, 0);
+  const furo = new THREE.Path();
+  furo.absarc(0, yRosa, rRosa, 0, Math.PI * 2, true);
+  s.holes.push(furo);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: 0.5, bevelEnabled: false, curveSegments: 48 });
+  geo.translate(0, 0, -0.25);
+  g.add(new THREE.Mesh(geo, pedra));
+
+  // vitral + molduras de pedra (anel grosso na frente, anel fino atrás)
+  const vidro = new THREE.Mesh(new THREE.CircleGeometry(rRosa, 64), vitral);
+  vidro.position.set(0, yRosa, 0);
+  g.add(vidro);
+  const anel = new THREE.Mesh(new THREE.TorusGeometry(rRosa + 0.02, 0.13, 10, 72), pedraEscura);
+  anel.position.set(0, yRosa, 0.22);
+  const anel2 = new THREE.Mesh(new THREE.TorusGeometry(rRosa + 0.25, 0.07, 8, 72), pedraEscura);
+  anel2.position.set(0, yRosa, 0.24);
+  g.add(anel, anel2);
+
+  // arcada cega (5 nichos ogivais em relevo) abaixo da rosácea
+  const n = 5;
+  const larg = (2 * meio - 0.6) / n;
+  for (let i = 0; i < n; i++) {
+    const x = -meio + 0.3 + larg * (i + 0.5);
+    const arq = new THREE.Mesh(geoArco(larg / 2 - 0.08, (larg / 2) * 1.5, 0.1, 0.12), pedraEscura);
+    arq.position.set(x, 2.2, 0.28);
+    g.add(arq);
+    for (const sx of [-1, 1]) {
+      const pil = new THREE.Mesh(geoFuste, pedraEscura);
+      pil.scale.set(0.05, 2.2, 0.05);
+      pil.position.set(x + sx * (larg / 2 - 0.08), 1.1, 0.3);
+      g.add(pil);
+    }
+  }
+  const friso = new THREE.Mesh(new THREE.BoxGeometry(2 * meio, 0.18, 0.2), pedraEscura);
+  friso.position.set(0, 3.3, 0.32);
+  g.add(friso);
+  return g;
+}
+
+/** Castiçal de pé, de ferro, com um círio grosso. */
+function castical() {
+  const g = new THREE.Group();
+  for (let k = 0; k < 3; k++) {
+    const ang = (k / 3) * Math.PI * 2;
+    const pe = new THREE.Mesh(geoFuste, ferro);
+    pe.scale.set(0.018, 0.32, 0.018);
+    pe.position.set(Math.cos(ang) * 0.12, 0.11, Math.sin(ang) * 0.12);
+    pe.rotation.set(Math.sin(ang) * 0.9, 0, -Math.cos(ang) * 0.9);
+    g.add(pe);
+  }
+  const fuste = new THREE.Mesh(
+    new THREE.LatheGeometry([[0.03, 0], [0.05, 0.05], [0.025, 0.12], [0.022, 0.7], [0.045, 0.75], [0.022, 0.8], [0.02, 1.35], [0.12, 1.4], [0.13, 1.43], [0, 1.43]].map(([x, y]) => new THREE.Vector2(x, y)), 12),
+    ferro,
+  );
+  fuste.position.y = 0.2;
+  g.add(fuste);
+  const cirio = new THREE.Mesh(geoFuste, cera);
+  cirio.scale.set(0.045, 0.34, 0.045);
+  cirio.position.y = 1.63 + 0.17;
+  const fogo = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), chama);
+  fogo.scale.set(0.016, 0.04, 0.016);
+  fogo.position.y = 1.63 + 0.34 + 0.035;
+  g.add(cirio, fogo);
+  return { g, chamas: [{ fogo, fase: Math.random() * 10, base: 0.016, alto: 0.04 }] };
+}
+
+/** Texto das páginas abertas do atril (canvas). */
+function texturaPaginas(titulo, pasta) {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 680;
+  const g = c.getContext('2d');
+  const papelGrad = g.createRadialGradient(512, 340, 100, 512, 340, 640);
+  papelGrad.addColorStop(0, '#efe4c8');
+  papelGrad.addColorStop(1, '#cdb98f');
+  g.fillStyle = papelGrad;
+  g.fillRect(0, 0, 1024, 680);
+  // sombra da dobra no meio
+  const dobra = g.createLinearGradient(452, 0, 572, 0);
+  dobra.addColorStop(0, 'rgba(80,55,25,0)');
+  dobra.addColorStop(0.5, 'rgba(80,55,25,0.45)');
+  dobra.addColorStop(1, 'rgba(80,55,25,0)');
+  g.fillStyle = dobra;
+  g.fillRect(452, 0, 120, 680);
+  g.fillStyle = '#5a1f14';
+  g.textAlign = 'center';
+  g.font = 'italic 600 46px Georgia, serif';
+  g.fillText('O livro do acaso', 256, 150);
+  g.font = 'italic 28px Georgia, serif';
+  g.fillStyle = '#4a3418';
+  for (const [i, l] of ['Entre tantos, este', 'esperou por você.', '', '— toque na página —'].entries()) g.fillText(l, 256, 250 + i * 46);
+  g.fillStyle = '#8a6a30';
+  g.font = '90px Georgia, serif';
+  g.fillText('❦', 256, 560);
+  // título quebrado em linhas na página direita
+  g.fillStyle = '#2a1a0a';
+  let tam = 52;
+  const palavras = (titulo || '').split(/\s+/);
+  let linhas;
+  do {
+    g.font = `600 ${tam}px Georgia, serif`;
+    linhas = [];
+    let atual = '';
+    for (const p of palavras) {
+      const t = atual ? `${atual} ${p}` : p;
+      if (g.measureText(t).width > 400 && atual) {
+        linhas.push(atual);
+        atual = p;
+      } else atual = t;
+    }
+    if (atual) linhas.push(atual);
+    tam -= 4;
+  } while (linhas.length * (tam + 12) > 380 && tam > 22);
+  const y0 = 300 - (linhas.length * (tam + 14)) / 2;
+  linhas.forEach((l, i) => g.fillText(l, 768, y0 + i * (tam + 14)));
+  g.fillStyle = '#6a4a20';
+  g.font = `italic 26px Georgia, serif`;
+  g.fillText(pasta || '', 768, 560);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/** Atril de madeira com um livro aberto. definir(livro) troca o texto das páginas. */
+function criarAtril() {
+  const g = new THREE.Group();
+  const pe = new THREE.Mesh(
+    new THREE.LatheGeometry([[0, 0], [0.34, 0], [0.34, 0.06], [0.26, 0.1], [0.14, 0.16], [0.1, 0.22], [0, 0.22]].map(([x, y]) => new THREE.Vector2(x, y)), 8),
+    madeiraAtril,
+  );
+  const coluna = new THREE.Mesh(
+    new THREE.LatheGeometry([[0.1, 0], [0.075, 0.06], [0.065, 0.42], [0.09, 0.47], [0.065, 0.52], [0.058, 0.86], [0.1, 0.92], [0.12, 0.96], [0, 0.96]].map(([x, y]) => new THREE.Vector2(x, y)), 12),
+    madeiraAtril,
+  );
+  coluna.position.y = 0.22;
+  g.add(pe, coluna);
+  // tampo inclinado (desce na direção de quem chega pelo corredor, +z)
+  const tampo = new THREE.Group();
+  tampo.position.set(0, 1.25, 0);
+  tampo.rotation.x = 0.42;
+  tampo.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.035, 0.5), madeiraAtril));
+  const aba = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.05, 0.03), madeiraAtril);
+  aba.position.set(0, 0.035, 0.24);
+  tampo.add(aba);
+  // livro aberto: capa de couro, miolo, páginas com texto
+  const capa = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.012, 0.4), couro);
+  capa.position.y = 0.024;
+  const miolo = new THREE.Mesh(new THREE.BoxGeometry(0.57, 0.03, 0.37), papel);
+  miolo.position.y = 0.045;
+  const paginas = new THREE.Mesh(new THREE.PlaneGeometry(0.57, 0.37), new THREE.MeshBasicMaterial({ color: 0xc8bea8 }));
+  paginas.rotation.x = -Math.PI / 2;
+  paginas.position.y = 0.061;
+  tampo.add(capa, miolo, paginas);
+  g.add(tampo);
+  return {
+    g,
+    paginas,
+    definir(livro) {
+      paginas.material.map?.dispose();
+      paginas.material.map = texturaPaginas(livro?.titulo, livro?.pasta);
+      paginas.material.needsUpdate = true;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 
 export function criarNave({ comprimento }) {
   const grupo = new THREE.Group();
   const { xPilar, xParede, yArranque, vao, alturaParede } = NAVE;
   const zIni = 2.4;
-  const nTramos = Math.ceil((comprimento + zIni + 1) / vao) + 1;
+  const ATRIO = 7.5; // espaço livre depois das estantes, antes da parede do fundo
+  const nTramos = Math.ceil((comprimento + zIni + ATRIO) / vao);
+  const zFundo = zIni - nTramos * vao;
   const a = xPilar; // meio-vão do arco transversal
   const r = a * 1.5;
   const subida = alturaOgiva(a, r);
@@ -262,7 +451,7 @@ export function criarNave({ comprimento }) {
     }
 
     // lustre no meio do tramo (em naves longas, um sim um não, pra poupar luzes)
-    if (k % (nTramos > 7 ? 2 : 1) === 0) {
+    if (k % (nTramos > 4 ? 2 : 1) === 0) {
       const l = lustre(yApice - 5.2);
       l.g.position.set(0, 5.2, (z + z1) / 2);
       grupo.add(l.g);
@@ -271,12 +460,43 @@ export function criarNave({ comprimento }) {
     }
   }
 
+  // ---- fundo: parede com rosácea, estrado e atril com o "livro do acaso" ----
+  const parede = paredeFundo(xParede, alturaParede, yApice);
+  parede.position.set(0, 0, zFundo - 0.35);
+  grupo.add(parede);
+  const luzVitral = new THREE.PointLight(0x9a70ff, 2.2, 14, 1.5);
+  luzVitral.position.set(0, 5.0, zFundo + 1.2);
+  grupo.add(luzVitral);
+
+  const zAtril = (-comprimento + zFundo) / 2;
+  for (const [w, d, h, y] of [[3.4, 2.8, 0.12, 0.06], [2.5, 2.0, 0.12, 0.18]]) {
+    const degrau = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), pedraEscura);
+    degrau.position.set(0, y, zAtril);
+    grupo.add(degrau);
+  }
+  const atril = criarAtril();
+  atril.g.position.set(0, 0.24, zAtril);
+  grupo.add(atril.g);
+  for (const sx of [-1, 1]) {
+    const c = castical();
+    c.g.position.set(sx * 0.95, 0.24, zAtril - 0.35);
+    grupo.add(c.g);
+    chamas.push(...c.chamas);
+  }
+  const luzAtril = new THREE.PointLight(0xffb060, 2.6, 6, 1.6);
+  luzAtril.position.set(0, 2.3, zAtril + 0.4);
+  grupo.add(luzAtril);
+  luzes.push(luzAtril);
+
   return {
     grupo,
+    zFundo,
+    zAtril,
+    atril,
     atualizar(t) {
-      for (const { fogo, fase } of chamas) {
+      for (const { fogo, fase, base = 0.012, alto = 0.03 } of chamas) {
         const f = 1 + Math.sin(t * 13 + fase) * 0.12 + Math.sin(t * 7.3 + fase * 2) * 0.08;
-        fogo.scale.set(0.012 * (2 - f), 0.03 * f, 0.012 * (2 - f));
+        fogo.scale.set(base * (2 - f), alto * f, base * (2 - f));
       }
       luzes.forEach((l, i) => (l.intensity = 3.2 + Math.sin(t * 9 + i) * 0.25 + Math.sin(t * 23 + i * 3) * 0.15));
     },

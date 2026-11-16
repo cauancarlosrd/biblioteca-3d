@@ -126,7 +126,7 @@ const lombadaDoLivro = (livro) => hash(livro.id + '#') % (N_LOMBADAS * 2);
 
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
+export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -481,6 +481,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     if (arrasto && !arrasto.moveu && !pausado) {
       const i = escolherNo(e.clientX, e.clientY);
       if (i >= 0) aoEscolher?.(i);
+      else if (tocouAtril(e.clientX, e.clientY)) aoAtril?.();
     }
     arrasto = null;
   });
@@ -499,7 +500,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     pos.x += -Math.sin(yaw) * frente + Math.cos(yaw) * direita;
     pos.z += -Math.cos(yaw) * frente - Math.sin(yaw) * direita;
     pos.x = Math.max(-CORREDOR + 0.35, Math.min(CORREDOR - 0.35, pos.x));
-    pos.z = Math.max(-comprimento - 0.5, Math.min(5, pos.z));
+    pos.z = Math.max((nave ? nave.zFundo + 1.6 : -comprimento - 0.5), Math.min(5, pos.z));
   }
 
   // ---------------- seleção ----------------
@@ -512,6 +513,13 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     ray.far = 8;
     const hit = ray.intersectObject(malha)[0];
     return hit && (!puxado || hit.instanceId !== puxado.i) ? hit.instanceId : -1;
+  }
+  function tocouAtril(cx, cy) {
+    if (!nave) return false;
+    const r = canvas.getBoundingClientRect();
+    ray.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+    ray.far = 5;
+    return ray.intersectObject(nave.atril.paginas).length > 0;
   }
 
   // ---------------- animações ----------------
@@ -559,7 +567,10 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   }
 
   async function devolver() {
-    if (!puxado) return;
+    if (!puxado) {
+      pausado = false;
+      return;
+    }
     const { i, mesh, p0, q0, p1 } = puxado;
     const pA = mesh.position.clone();
     const qA = mesh.quaternion.clone();
@@ -607,6 +618,23 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
       x0: pitch, x1: pitchAlvo,
     };
     destacar(i);
+  }
+
+  /** Voa até ficar de frente pro atril, olhando as páginas. */
+  function voarAteAtril() {
+    if (!nave) return;
+    const livro = new THREE.Vector3(0, 1.5, nave.zAtril);
+    const alvo = new THREE.Vector3(0, OLHO + 0.15, nave.zAtril + 1.05);
+    const dir = livro.clone().sub(alvo);
+    const yawAlvo = Math.atan2(-dir.x, -dir.z);
+    const dy = ((yawAlvo - yaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+    voo = {
+      t: 0,
+      dur: Math.min(4, 1.2 + pos.distanceTo(alvo) / 10),
+      p0: pos.clone(), p1: alvo,
+      y0: yaw, y1: yaw + dy,
+      x0: pitch, x1: Math.atan2(dir.y, Math.hypot(dir.x, dir.z)),
+    };
   }
 
   // ---------------- loop ----------------
@@ -697,6 +725,9 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     puxar,
     devolver,
     voarAte,
+    voarAteAtril,
+    definirAtril: (livro) => nave?.atril.definir(livro),
+    pausar: () => (pausado = true),
     destacar,
     get destacado() { return destacado; },
   };

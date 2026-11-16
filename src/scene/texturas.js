@@ -19,6 +19,9 @@ export const texPiso = carregar('piso.jpg', { repetir: true });
 export const texPedra = carregar('pedra.jpg', { repetir: true });
 export const texMadeira = carregar('madeira.jpg', { repetir: true });
 export const texLajes = carregar('lajes.jpg', { repetir: true });
+export const texRosacea = carregar('rosacea.jpg');
+export const texNebulosa = carregar('nebulosa.jpg', { repetir: true });
+export const texPlaneta = carregar('planeta.jpg');
 
 export const N_LOMBADAS = 8; // faixas verticais de 128 px no atlas
 

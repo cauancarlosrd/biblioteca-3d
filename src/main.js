@@ -18,6 +18,7 @@ const inputPasta = $('#input-pasta');
 let todos = []; // livros carregados (ordem original)
 let ordem = []; // livros na ordem da cena
 let seed = lerSeed() ?? novaSeed();
+let sugestao = -1; // índice (em ordem) do livro aberto no atril
 
 const visualizador = criarVisualizador({ aoFechar: () => biblioteca.devolver() });
 
@@ -37,6 +38,13 @@ function criarBibliotecaNaTela() {
     dica.hidden = true;
     registrarAbertura(livro.id);
     await biblioteca.puxar(i);
+    visualizador.abrir(livro);
+  },
+  aoAtril: () => {
+    if (sugestao < 0 || visualizador.aberto) return;
+    const livro = ordem[sugestao];
+    registrarAbertura(livro.id);
+    biblioteca.pausar();
     visualizador.abrir(livro);
   },
   aoPassar: (i, x, y) => {
@@ -71,6 +79,7 @@ function arranjar() {
     return embaralhar([...pastas.keys()].sort(), rnd).flatMap((p) => embaralhar(pastas.get(p), rnd));
   });
   const { estantes } = biblioteca.montar(ordem);
+  sortearSugestao();
   info.textContent = `${ordem.length} livros · ${porArea.size} áreas · ${nPastas} pastas · ${estantes} estantes · seed ${seed}`;
 }
 
@@ -117,9 +126,18 @@ $('#btn-trocar').addEventListener('click', () => {
 });
 inputPasta.addEventListener('change', () => carregar(lerFileList(inputPasta.files)));
 
+function sortearSugestao() {
+  if (!ordem.length) return;
+  sugestao = livroDoAcaso(ordem);
+  biblioteca.definirAtril(ordem[sugestao]);
+  biblioteca.destacar(sugestao); // o livro também brilha na estante
+}
+
+// 🎲: sorteia outro livro, abre no atril do fundo da nave e leva você até lá
 $('#btn-acaso').addEventListener('click', () => {
   if (!ordem.length || visualizador.aberto) return;
-  biblioteca.voarAte(livroDoAcaso(ordem));
+  sortearSugestao();
+  biblioteca.voarAteAtril();
 });
 $('#btn-ordem').addEventListener('click', () => {
   if (visualizador.aberto) return;

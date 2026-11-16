@@ -1,36 +1,23 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../random/acaso.js';
+import { texNebulosa, texPlaneta } from './texturas.js';
 
-// Céu: nebulosa procedural + campo de estrelas que piscam.
+// Céu: panorama de nebulosa (Gemini) + campo de estrelas que piscam.
 // O grupo acompanha a câmera, então o céu parece infinito.
 
 const RAIO = 180;
-// eixo da "via láctea" (faixa mais densa de estrelas e nuvens)
-const EIXO_FAIXA = new THREE.Vector3(0.35, 0.9, -0.25).normalize();
-
-const ruido = /* glsl */ `
-  // ruído de valor 3D + fbm
-  float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-  float ruido(vec3 p) {
-    vec3 i = floor(p), f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(
-      mix(mix(hash3(i), hash3(i + vec3(1,0,0)), f.x), mix(hash3(i + vec3(0,1,0)), hash3(i + vec3(1,1,0)), f.x), f.y),
-      mix(mix(hash3(i + vec3(0,0,1)), hash3(i + vec3(1,0,1)), f.x), mix(hash3(i + vec3(0,1,1)), hash3(i + vec3(1,1,1)), f.x), f.y),
-      f.z);
-  }
-  float fbm(vec3 p) {
-    float v = 0.0, a = 0.5;
-    for (int i = 0; i < 5; i++) { v += a * ruido(p); p *= 2.03; a *= 0.5; }
-    return v;
-  }
-`;
+// O panorama tem a via láctea no "equador". Giramos o céu pra faixa passar
+// por cima da nave, no sentido do corredor (visível entre as nervuras e no fim).
+const GIRO_CEU = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(0.15, 0.3, 1.25, 'YXZ'));
+const GIRO3 = new THREE.Matrix3().setFromMatrix4(GIRO_CEU);
+// eixo da faixa no mundo = Gᵀ·ŷ (estrelas mais densas perto dela)
+const EIXO_FAIXA = new THREE.Vector3(0, 1, 0).applyMatrix3(GIRO3.clone().transpose()).normalize();
 
 function criarNebulosa() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
-    uniforms: { uEixo: { value: EIXO_FAIXA } },
+    uniforms: { uGiro: { value: GIRO3 }, uPanorama: { value: texNebulosa } },
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main() {
@@ -38,25 +25,18 @@ function criarNebulosa() {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uEixo;
+      uniform mat3 uGiro;
+      uniform sampler2D uPanorama;
       varying vec3 vDir;
-      ${ruido}
       void main() {
-        vec3 d = normalize(vDir);
-        float faixa = exp(-pow(dot(d, uEixo) * 3.2, 2.0));       // 1 no meio da via láctea
-        float n1 = fbm(d * 2.2 + 3.0);
-        float n2 = fbm(d * 4.5 - 7.0);
-        float nuvem = smoothstep(0.42, 0.85, n1) * (0.35 + 0.65 * faixa);
-        float poeira = smoothstep(0.55, 0.75, n2) * faixa;          // faixas escuras
-
-        vec3 cor = vec3(0.010, 0.008, 0.028);                         // fundo
-        vec3 violeta = vec3(0.30, 0.10, 0.48);
-        vec3 azul = vec3(0.05, 0.22, 0.42);
-        vec3 ouro = vec3(0.55, 0.36, 0.14);
-        cor += mix(violeta, azul, smoothstep(0.3, 0.7, n2)) * nuvem * 0.55;
-        cor += ouro * pow(faixa, 3.0) * smoothstep(0.45, 0.8, n1) * 0.25;
-        cor += vec3(0.10, 0.08, 0.16) * faixa * 0.35;               // brilho difuso da faixa
-        cor *= 1.0 - poeira * 0.6;
+        vec3 d = uGiro * normalize(vDir);
+        // equirretangular; u espelhado (x2) pra não ter emenda na volta
+        float u = atan(d.z, d.x) / 6.2831853 + 0.5;
+        float v = asin(clamp(d.y, -1.0, 1.0)) / 3.1415927 + 0.5;
+        vec2 uv = vec2(u * 2.0, mix(0.04, 0.96, v));
+        vec3 cor = texture2D(uPanorama, uv).rgb * 0.75;
+        cor *= smoothstep(1.0, 0.75, abs(d.y));             // polos escuros
+        cor += vec3(0.006, 0.005, 0.016);
         gl_FragColor = vec4(cor, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -167,12 +147,14 @@ function criarPlaneta() {
   const corpo = new THREE.Mesh(
     new THREE.SphereGeometry(42, 64, 48),
     new THREE.ShaderMaterial({
-      uniforms: { uSol: { value: DIR_SOL } },
+      uniforms: { uSol: { value: DIR_SOL }, uMapa: { value: texPlaneta } },
       vertexShader: /* glsl */ `
+        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vLocal;
         varying vec3 vVista;
         void main() {
+          vUv = uv;
           vLocal = normalize(position);
           vNormal = normalize(mat3(modelMatrix) * normal);
           vec4 m = modelMatrix * vec4(position, 1.0);
@@ -181,17 +163,13 @@ function criarPlaneta() {
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uSol;
+        uniform sampler2D uMapa;
+        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vLocal;
         varying vec3 vVista;
-        ${ruido}
         void main() {
-          float lat = vLocal.y;
-          float turb = fbm(vLocal * 4.0) * 0.35;
-          float faixas = 0.5 + 0.5 * sin((lat + turb) * 26.0);
-          vec3 claro = vec3(0.55, 0.68, 0.85);
-          vec3 escuro = vec3(0.12, 0.2, 0.38);
-          vec3 cor = mix(escuro, claro, faixas * 0.7 + fbm(vLocal * 9.0) * 0.3);
+          vec3 cor = texture2D(uMapa, vUv).rgb * 0.9;
           float luz = clamp(dot(vNormal, uSol), 0.0, 1.0);
           float borda = pow(1.0 - max(dot(vNormal, vVista), 0.0), 3.0);
           vec3 c = cor * (0.04 + luz * 1.1) + vec3(0.3, 0.6, 1.4) * borda * (0.25 + luz);
@@ -201,6 +179,7 @@ function criarPlaneta() {
         }`,
     }),
   );
+  corpo.rotation.set(0, -Math.PI / 2, 0.22); // emenda da textura fica do lado de trás; eixo inclinado
   grupo.add(corpo);
 
   // atmosfera: halo azul aditivo em volta
