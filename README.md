@@ -50,3 +50,8 @@ Veja [docs/IDEIA.md](docs/IDEIA.md).
 - [ ] **Fase 2 — Biblioteca:** salas por área, capas reais (pdf.js), cache de metadados
 - [ ] **Fase 3 — Acaso:** mesa de leitura, rastro de luz, histórico mais rico
 - [ ] **Fase 4 — Acabamento:** leitor de EPUB, texto nas lombadas, busca, planta baixa, celular
+
+## Créditos das imagens
+
+- Galáxia NGC 1827 (`public/texturas/galaxia-ngc1827.jpg`): NASA/ESA Hubble Space Telescope, via nasa.gov.
+- As outras texturas em `public/texturas/` foram geradas com o Google Gemini.

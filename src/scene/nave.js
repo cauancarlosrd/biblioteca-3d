@@ -25,7 +25,54 @@ aplicarMapaMundo(madeiraAtril, texMadeira, 0.8);
 const couro = new THREE.MeshStandardMaterial({ color: 0x4a1a14, roughness: 0.6 });
 const papel = new THREE.MeshStandardMaterial({ color: 0xd9ccb0, roughness: 0.9 });
 const vitral = new THREE.MeshBasicMaterial({ map: texRosacea, color: new THREE.Color(1.15, 1.1, 1.2), side: THREE.DoubleSide });
-export const MATERIAIS_NAVE = [pedra, pedraEscura, ferro, cera, chama, madeiraAtril, couro, papel, vitral];
+// halo de luz de vela pintado na parede (barato: não é uma luz de verdade)
+function texturaHalo() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const r = g.createRadialGradient(64, 54, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(255,200,130,1)');
+  r.addColorStop(0.25, 'rgba(255,160,80,0.45)');
+  r.addColorStop(0.6, 'rgba(255,130,60,0.1)');
+  r.addColorStop(1, 'rgba(255,120,50,0)');
+  g.fillStyle = r;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+const halo = new THREE.MeshBasicMaterial({
+  map: texturaHalo(),
+  color: new THREE.Color(0.55, 0.38, 0.22),
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+export const MATERIAIS_NAVE = [pedra, pedraEscura, ferro, cera, chama, madeiraAtril, couro, papel, vitral, halo];
+
+/** Arandela de ferro presa na parede (frente em +z), com vela e halo fraco na pedra. */
+const geoPlaca = new THREE.LatheGeometry([[0, 0], [0.09, 0], [0.1, 0.015], [0.07, 0.03], [0, 0.03]].map(([x, y]) => new THREE.Vector2(x, y)), 6);
+const geoBraco = new THREE.TubeGeometry(
+  new THREE.CubicBezierCurve3(new THREE.Vector3(0, 0, 0.02), new THREE.Vector3(0, -0.12, 0.12), new THREE.Vector3(0, -0.05, 0.26), new THREE.Vector3(0, 0.02, 0.28)),
+  16, 0.012, 6,
+);
+const geoPratinho = new THREE.LatheGeometry([[0, 0], [0.035, 0], [0.06, 0.02], [0.062, 0.026], [0, 0.026]].map(([x, y]) => new THREE.Vector2(x, y)), 12);
+function arandela(fase) {
+  const g = new THREE.Group();
+  const placa = new THREE.Mesh(geoPlaca, ferro);
+  placa.rotation.x = Math.PI / 2;
+  g.add(placa, new THREE.Mesh(geoBraco, ferro));
+  const prato = new THREE.Mesh(geoPratinho, ferro);
+  prato.position.set(0, 0.02, 0.28);
+  const vela = new THREE.Mesh(geoFuste, cera);
+  vela.scale.set(0.022, 0.13, 0.022);
+  vela.position.set(0, 0.046 + 0.065, 0.28);
+  const fogo = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), chama);
+  fogo.scale.set(0.011, 0.028, 0.011);
+  fogo.position.set(0, 0.046 + 0.13 + 0.024, 0.28);
+  const brilho = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), halo);
+  brilho.position.set(0, 0.25, 0.012);
+  g.add(prato, vela, fogo, brilho);
+  return { g, chamas: [{ fogo, fase }], brilho };
+}
 
 // ---------------------------------------------------------------------------
 // geometria de arco ogival
@@ -442,12 +489,19 @@ export function criarNave({ comprimento }) {
     cume.position.set(0, yApice, (z + z1) / 2);
     grupo.add(cume);
 
-    // paredes com janela dos dois lados
+    // paredes com janela dos dois lados, e duas arandelas ladeando cada janela
     for (const s of [-1, 1]) {
       const p = paredeComJanela(vao, alturaParede);
       p.rotation.y = s < 0 ? Math.PI / 2 : -Math.PI / 2;
       p.position.set(s * xParede, 0, (z + z1) / 2);
       grupo.add(p);
+      for (const dz of [-1.45, 1.45]) {
+        const a = arandela(k * 3.1 + dz + s);
+        a.g.rotation.y = s < 0 ? Math.PI / 2 : -Math.PI / 2; // frente virada pro corredor
+        a.g.position.set(s * (xParede - 0.226), 4.3, (z + z1) / 2 + dz);
+        grupo.add(a.g);
+        chamas.push(...a.chamas);
+      }
     }
 
     // lustre no meio do tramo (em naves longas, um sim um não, pra poupar luzes)
@@ -498,6 +552,8 @@ export function criarNave({ comprimento }) {
         const f = 1 + Math.sin(t * 13 + fase) * 0.12 + Math.sin(t * 7.3 + fase * 2) * 0.08;
         fogo.scale.set(base * (2 - f), alto * f, base * (2 - f));
       }
+      // halos das arandelas tremem junto (material compartilhado)
+      halo.color.setRGB(0.55, 0.38, 0.22).multiplyScalar(1 + Math.sin(t * 8.3) * 0.06 + Math.sin(t * 15.1) * 0.04);
       luzes.forEach((l, i) => (l.intensity = 3.2 + Math.sin(t * 9 + i) * 0.25 + Math.sin(t * 23 + i * 3) * 0.15));
     },
   };

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../random/acaso.js';
-import { texNebulosa, texPlaneta } from './texturas.js';
+import { texNebulosa, texPlaneta, texGalaxia } from './texturas.js';
 
 // Céu: panorama de nebulosa (Gemini) + campo de estrelas que piscam.
 // O grupo acompanha a câmera, então o céu parece infinito.
@@ -34,7 +34,7 @@ function criarNebulosa() {
         float u = atan(d.z, d.x) / 6.2831853 + 0.5;
         float v = asin(clamp(d.y, -1.0, 1.0)) / 3.1415927 + 0.5;
         vec2 uv = vec2(u * 2.0, mix(0.04, 0.96, v));
-        vec3 cor = texture2D(uPanorama, uv).rgb * 0.75;
+        vec3 cor = texture2D(uPanorama, uv).rgb * 0.3;      // nebulosa só de fundo, bem fraca
         cor *= smoothstep(1.0, 0.75, abs(d.y));             // polos escuros
         cor += vec3(0.006, 0.005, 0.016);
         gl_FragColor = vec4(cor, 1.0);
@@ -228,11 +228,35 @@ function criarPlaneta() {
   return grupo;
 }
 
+/** Galáxia do Hubble grande no céu, acima e à esquerda da nave (aditiva: o preto some). */
+function criarGalaxia() {
+  const dir = new THREE.Vector3(-0.38, 0.72, -0.58).normalize();
+  const dist = 160;
+  const largura = 2 * dist * Math.tan(THREE.MathUtils.degToRad(34)); // ~68° de céu
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(largura, largura * (1986 / 2048)),
+    new THREE.MeshBasicMaterial({
+      map: texGalaxia,
+      color: new THREE.Color(0.95, 0.95, 1.0),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
+    }),
+  );
+  m.position.copy(dir).multiplyScalar(dist);
+  m.lookAt(0, 0, 0);
+  m.rotateZ(-0.35);
+  m.renderOrder = -1;
+  m.frustumCulled = false;
+  return m;
+}
+
 export function criarCeu() {
   const grupo = new THREE.Group();
   const nebulosa = criarNebulosa();
   const estrelas = criarEstrelas();
-  grupo.add(nebulosa, estrelas, criarPlaneta());
+  grupo.add(nebulosa, criarGalaxia(), estrelas, criarPlaneta());
 
   return {
     grupo,

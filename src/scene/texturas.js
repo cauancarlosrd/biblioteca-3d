@@ -22,6 +22,11 @@ export const texLajes = carregar('lajes.jpg', { repetir: true });
 export const texRosacea = carregar('rosacea.jpg');
 export const texNebulosa = carregar('nebulosa.jpg', { repetir: true });
 export const texPlaneta = carregar('planeta.jpg');
+// galáxia NGC 1827 (Hubble — NASA/ESA), fundo preto: somada ao céu
+export const texGalaxia = carregar('galaxia-ngc1827.jpg');
+// o mesmo panorama, como mapa de ambiente: a luz do espaço "reflete" dentro da nave
+export const texAmbiente = carregar('nebulosa.jpg');
+texAmbiente.mapping = THREE.EquirectangularReflectionMapping;
 
 export const N_LOMBADAS = 8; // faixas verticais de 128 px no atlas
 

@@ -6,7 +6,7 @@ import { criarChao } from './chao.js';
 import { criarMagia } from './magia.js';
 import { materiais, MATERIAIS_FIXOS, materialLavagem, geoPlano, comporVao, tremularLuzes, geoCoroamento } from './cenario.js';
 import { criarNave, MATERIAIS_NAVE } from './nave.js';
-import { materialLivro, N_LOMBADAS } from './texturas.js';
+import { materialLivro, N_LOMBADAS, texAmbiente } from './texturas.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -136,6 +136,10 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
   cena.background = new THREE.Color(0x03020a);
   // a névoa só apaga as estantes distantes; céu e estrelas ignoram névoa
   cena.fog = new THREE.Fog(0x07061a, 10, 48);
+  // a luz do espaço entra pela abóbada aberta e pelas janelas: ambiente vindo do céu
+  cena.environment = texAmbiente;
+  cena.environmentIntensity = 0.32;
+  cena.environmentRotation.set(0.15, 0.3, 1.25);
 
   const camera = new THREE.PerspectiveCamera(65, 1, 0.05, 400);
   camera.rotation.order = 'YXZ';
@@ -146,7 +150,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
   const chao = criarChao(renderer);
   cena.add(chao.grupo);
 
-  cena.add(new THREE.HemisphereLight(0xa8b0e8, 0x2a1a30, 0.42));
+  cena.add(new THREE.HemisphereLight(0xa8b0e8, 0x2a1a30, 0.22));
   const luar = new THREE.DirectionalLight(0x9aa6ff, 0.3);
   luar.position.set(-3, 10, 4);
   cena.add(luar);
