@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { texPiso } from './texturas.js';
 
-// Chão de vidro escuro: reflete o céu e as estantes, com uma grade
-// dourada bem fraca que some com a distância e um halo sob os pés.
+// Chão: placas de metal escuro com um reflexo molhado por baixo.
 
 const TAMANHO = 600;
 const ESCALA_REFLEXO = 0.5; // resolução do reflexo em relação à tela
 
-export function criarChao(renderer) {
+export function criarChao(renderer, { corredor = 1.8 } = {}) {
   const grupo = new THREE.Group();
 
   const tamanhoReflexo = () => {
@@ -24,13 +24,19 @@ export function criarChao(renderer) {
   espelho.rotation.x = -Math.PI / 2;
   grupo.add(espelho);
 
+  // placas metálicas (textura do Gemini) por cima do espelho, deixando o reflexo aparecer
   const grade = new THREE.Mesh(
     new THREE.PlaneGeometry(TAMANHO, TAMANHO),
     new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: { uCamera: { value: new THREE.Vector3() }, uTempo: { value: 0 } },
+      uniforms: {
+        uCamera: { value: new THREE.Vector3() },
+        uTempo: { value: 0 },
+        uPiso: { value: texPiso },
+        uNevoa: { value: new THREE.Color(0x07061a) },
+        uCorredor: { value: corredor },
+      },
       vertexShader: /* glsl */ `
         varying vec3 vMundo;
         void main() {
@@ -41,23 +47,26 @@ export function criarChao(renderer) {
       fragmentShader: /* glsl */ `
         uniform vec3 uCamera;
         uniform float uTempo;
+        uniform sampler2D uPiso;
+        uniform vec3 uNevoa;
+        uniform float uCorredor;
         varying vec3 vMundo;
-        float linha(vec2 p, float passo) {
-          vec2 g = abs(fract(p / passo - 0.5) - 0.5) / fwidth(p / passo);
-          return 1.0 - min(min(g.x, g.y), 1.0);
-        }
         void main() {
           vec2 p = vMundo.xz;
           float d = distance(p, uCamera.xz);
-          float fina = linha(p, 1.0) * 0.35;
-          float grossa = linha(p, 4.0);
-          float fade = exp(-d * 0.09);
-          vec3 ouro = vec3(0.95, 0.72, 0.40);
-          vec3 cor = ouro * (fina + grossa) * 0.10 * fade;
-          // halo do orbe/lanterna sob os pés
-          float halo = exp(-d * d * 0.35) * (0.9 + 0.1 * sin(uTempo * 1.7));
-          cor += vec3(1.0, 0.78, 0.5) * halo * 0.07;
-          gl_FragColor = vec4(cor, 1.0);
+          vec3 piso = texture2D(uPiso, p / 2.4).rgb;
+          vec3 cor = piso * piso * 0.5;            // escurece e dá contraste
+          float alfa = 0.68;
+          // poça de luz quente sob os pés
+          cor += vec3(1.0, 0.72, 0.45) * exp(-d * d * 0.25) * 0.05;
+          // luz laranja das fitas do chão espalhando junto às estantes
+          float borda = abs(abs(p.x) - (uCorredor - 0.04));
+          cor += vec3(1.0, 0.5, 0.18) * exp(-borda * borda * 40.0) * 0.06;
+          // longe, dissolve na névoa
+          float f = smoothstep(10.0, 48.0, d);
+          cor = mix(cor, uNevoa, f);
+          alfa = mix(alfa, 1.0, f);
+          gl_FragColor = vec4(cor, alfa);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,

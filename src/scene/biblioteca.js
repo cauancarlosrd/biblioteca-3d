@@ -4,7 +4,8 @@ import { areaESub } from '../library/loader.js';
 import { criarCeu } from './ceu.js';
 import { criarChao } from './chao.js';
 import { criarMagia } from './magia.js';
-import { materiais, MATERIAIS_FIXOS, materialLavagem, geoPlano, preencherVao, criarEstrutura } from './cenario.js';
+import { materiais, MATERIAIS_FIXOS, materialLavagem, geoPlano, comporVao, criarEstrutura } from './cenario.js';
+import { materialLivro, N_LOMBADAS } from './texturas.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -27,24 +28,6 @@ const tmpV = new THREE.Vector3();
 const tmpQ = new THREE.Quaternion();
 const tmpS = new THREE.Vector3();
 const EIXO_Y = new THREE.Vector3(0, 1, 0);
-
-function texturaLivro() {
-  const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 256;
-  const g = c.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, 64, 0);
-  grad.addColorStop(0, '#b8b8b8');
-  grad.addColorStop(0.5, '#e6e6e6');
-  grad.addColorStop(1, '#b0b0b0');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 64, 256);
-  g.fillStyle = '#fff4d0';
-  for (const y of [22, 32, 220, 230]) g.fillRect(0, y, 64, 4);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
 
 const FONTE = '"Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif';
 
@@ -105,11 +88,12 @@ function texturaEtiqueta(texto, proporcao) {
 }
 
 function corDoLivro(livro) {
+  // a cor vem da textura; aqui só uma variação sutil de tom e brilho
   const h = hash(livro.titulo);
-  const c = new THREE.Color();
-  c.setHSL((h % 360) / 360, 0.3 + ((h >> 9) % 30) / 100, 0.22 + ((h >> 17) % 22) / 100);
-  return c;
+  const c = new THREE.Color().setHSL((h % 360) / 360, 0.25, 0.5);
+  return new THREE.Color(1, 1, 1).lerp(c, 0.18).multiplyScalar(0.85 + ((h >> 11) % 30) / 100);
 }
+const lombadaDoLivro = (livro) => hash(livro.id + '#') % (N_LOMBADAS * 2);
 
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -147,7 +131,8 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   composer.addPass(new OutputPass());
 
   const geoCaixa = new THREE.BoxGeometry(1, 1, 1);
-  const matLivro = new THREE.MeshStandardMaterial({ map: texturaLivro(), roughness: 0.7 });
+  const matLivro = materialLivro({ instanciado: true });
+  const geoLivro = new THREE.BoxGeometry(1, 1, 1);
   const matMadeira = materiais.metal;
 
   // destaque do "livro do acaso"
@@ -197,7 +182,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   function montar(lista) {
     cena.remove(grupo);
     grupo.traverse((o) => {
-      if (!o.isMesh || o.material === matLivro || MATERIAIS_FIXOS.has(o.material)) return;
+      if (!o.isMesh || Array.isArray(o.material) || o.material === matLivro || MATERIAIS_FIXOS.has(o.material)) return;
       o.material.map?.dispose();
       o.material.dispose();
     });
@@ -334,14 +319,14 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
 
       // adereços no espaço que sobrou
       const rnd = mulberry32(hash(e.areas.join('|')) + ie);
-      for (const v of e.vazios) {
-        const max = v.x0 === xMin ? 3 : 2;
-        for (const a of preencherVao(v.x0, v.x1, rnd, max)) {
+      const giro = Math.floor(rnd() * 7);
+      e.vazios.forEach((v, j) => {
+        for (const a of comporVao(v, xMin, xMax, rnd, giro + j)) {
           a.obj.applyMatrix4(noMundo(a.x, base(v.prat), -0.02));
           grupo.add(a.obj);
           if (a.animar) animaveis.push(a.animar);
         }
-      }
+      });
 
       // divisores finos entre subtópicos
       for (const d of e.divisores) {
@@ -406,7 +391,10 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     instanciar(geoPlano, materialLavagem, lavagens).renderOrder = 2;
     grupo.add(criarEstrutura({ corredor: CORREDOR, fundoEstante: CASE_D, comprimento }));
 
-    malha = new THREE.InstancedMesh(geoCaixa, matLivro, Math.max(1, lista.length));
+    const n = Math.max(1, lista.length);
+    geoLivro.setAttribute('aLombada', new THREE.InstancedBufferAttribute(
+      Float32Array.from({ length: n }, (_, i) => (lista[i] ? lombadaDoLivro(lista[i]) : 0)), 1));
+    malha = new THREE.InstancedMesh(geoLivro, matLivro, n);
     malha.count = lista.length;
     lista.forEach((l, i) => {
       malha.setMatrixAt(i, dados[i].matriz);
@@ -513,7 +501,9 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     d.matriz.decompose(p0, q0, s);
     const cor = new THREE.Color();
     malha.getColorAt(i, cor);
-    const mesh = new THREE.Mesh(geoCaixa, new THREE.MeshStandardMaterial({ map: matLivro.map, color: cor, roughness: 0.7 }));
+    const matPuxado = materialLivro({ instanciado: false, cor });
+    matPuxado.userData.uLombada.value = lombadaDoLivro(livros[i]);
+    const mesh = new THREE.Mesh(geoCaixa, matPuxado);
     mesh.position.copy(p0);
     mesh.quaternion.copy(q0);
     mesh.scale.copy(s);

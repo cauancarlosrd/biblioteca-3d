@@ -1,31 +1,79 @@
 import * as THREE from 'three';
+import { texLombadas, texMetal, aplicarMapaMundo, N_LOMBADAS } from './texturas.js';
 
 // Cenário de estação espacial: materiais, fitas de LED, arcos do corredor
-// e adereços que ocupam o espaço vazio das prateleiras.
+// e adereços que ocupam (de forma organizada) o espaço vazio das prateleiras.
 
 // cores acima de 1 passam do limiar do bloom e "acendem"
 export const COR_LED = new THREE.Color(1.35, 0.62, 0.2);
 const COR_LED_FRACA = new THREE.Color(0.55, 0.24, 0.08);
 
 export const materiais = {
-  metal: new THREE.MeshStandardMaterial({ color: 0x34343e, metalness: 0.6, roughness: 0.45 }),
-  metalEscuro: new THREE.MeshStandardMaterial({ color: 0x1c1c24, metalness: 0.5, roughness: 0.55 }),
-  latao: new THREE.MeshStandardMaterial({ color: 0xc89a52, metalness: 0.85, roughness: 0.3, emissive: 0x2a1a08 }),
+  metal: new THREE.MeshStandardMaterial({ color: 0xb4b4c2, metalness: 0.3, roughness: 0.55 }),
+  metalEscuro: new THREE.MeshStandardMaterial({ color: 0x23232c, metalness: 0.45, roughness: 0.5 }),
+  latao: new THREE.MeshStandardMaterial({ color: 0xc89a52, metalness: 0.8, roughness: 0.3, emissive: 0x2a1a08 }),
+  lataoEscuro: new THREE.MeshStandardMaterial({ color: 0x7a5a2e, metalness: 0.75, roughness: 0.4, emissive: 0x140c04 }),
   led: new THREE.MeshBasicMaterial({ color: COR_LED }),
   ledFraco: new THREE.MeshBasicMaterial({ color: COR_LED_FRACA }),
-  lua: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.82, 0.58) }),
-  ledAzul: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.7, 1.3) }),
-  folha: new THREE.MeshStandardMaterial({ color: 0x2f6b34, roughness: 0.8, flatShading: true }),
-  vaso: new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.7 }),
+  ledAzul: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.75, 1.3) }),
+  folha: new THREE.MeshStandardMaterial({ color: 0x3f7f3a, roughness: 0.65, side: THREE.DoubleSide }),
+  folhaClara: new THREE.MeshStandardMaterial({ color: 0x5f9c48, roughness: 0.65, side: THREE.DoubleSide }),
+  caule: new THREE.MeshStandardMaterial({ color: 0x3c5a2a, roughness: 0.8 }),
+  ceramica: new THREE.MeshStandardMaterial({ color: 0x2b4148, roughness: 0.35, metalness: 0.1 }),
+  terra: new THREE.MeshStandardMaterial({ color: 0x2a1d14, roughness: 1 }),
+  vidro: new THREE.MeshStandardMaterial({ color: 0xcfe6ff, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }),
+  areia: new THREE.MeshStandardMaterial({ color: 0xd9b27a, roughness: 0.9 }),
+  globo: new THREE.MeshStandardMaterial({ color: 0x2f5f8f, roughness: 0.5 }),
+  holo: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.35, 0.9, 1.25), wireframe: true, transparent: true, opacity: 0.75 }),
+  holoLuz: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.55, 0.8), transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
 };
-export const MATERIAIS_FIXOS = new Set(Object.values(materiais));
+aplicarMapaMundo(materiais.metal, texMetal, 1.6);
+
+// lua da luminária: textura de crateras desenhada em canvas
+function texturaLua() {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f2e6cc';
+  g.fillRect(0, 0, 256, 128);
+  let s = 11;
+  const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 90; i++) {
+    const x = rnd() * 256;
+    const y = rnd() * 128;
+    const r = 2 + rnd() ** 3 * 16;
+    g.fillStyle = `rgba(150,130,105,${0.15 + rnd() * 0.25})`;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+materiais.lua = new THREE.MeshBasicMaterial({ map: texturaLua(), color: new THREE.Color(1.05, 0.9, 0.7) });
+
+// uma faixa do atlas de lombadas por material (para livros deitados)
+const matsLombada = Array.from({ length: N_LOMBADAS }, (_, k) => {
+  const t = texLombadas.clone();
+  t.repeat.set(1 / N_LOMBADAS * 0.93, 1);
+  t.offset.set((k + 0.035) / N_LOMBADAS, 0);
+  t.needsUpdate = true;
+  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.72 });
+});
+const matPaginas = new THREE.MeshStandardMaterial({ color: 0xcfc2a6, roughness: 0.9 });
+
+export const MATERIAIS_FIXOS = new Set([...Object.values(materiais), ...matsLombada, matPaginas]);
 
 const geo = {
   caixa: new THREE.BoxGeometry(1, 1, 1),
-  esfera: new THREE.SphereGeometry(1, 24, 16),
-  cilindro: new THREE.CylinderGeometry(1, 1, 1, 20),
-  anel: new THREE.TorusGeometry(1, 0.035, 8, 48),
-  folhagem: new THREE.IcosahedronGeometry(1, 0),
+  esfera: new THREE.SphereGeometry(1, 32, 20),
+  cilindro: new THREE.CylinderGeometry(1, 1, 1, 24),
+  anel: new THREE.TorusGeometry(1, 0.04, 8, 64),
+  faixa: new THREE.TorusGeometry(1, 0.11, 4, 64),
+  icosa: new THREE.IcosahedronGeometry(1, 1),
+  cone: new THREE.ConeGeometry(1, 1, 24, 1, true),
 };
 
 // textura de "luz lavando" a prateleira: forte em cima, some embaixo
@@ -54,100 +102,239 @@ MATERIAIS_FIXOS.add(materialLavagem);
 export const geoPlano = new THREE.PlaneGeometry(1, 1);
 
 // ---------------------------------------------------------------------------
-// adereços (origem no centro da base; cabem num vão de prateleira ~0,38 m)
+// modelos de adereços (origem no centro da base; cabem num vão de ~0,38 m)
 
-const malha = (g, m, px, py, pz, sx, sy, sz) => {
+const malha = (g, m, px = 0, py = 0, pz = 0, sx = 1, sy = sx, sz = sx) => {
   const o = new THREE.Mesh(g, m);
   o.position.set(px, py, pz);
-  o.scale.set(sx, sy ?? sx, sz ?? sx);
+  o.scale.set(sx, sy, sz);
   return o;
 };
+// sólido de revolução a partir de pares [raio, altura]
+const torno = (perfil, segmentos = 40) =>
+  new THREE.LatheGeometry(perfil.map(([r, y]) => new THREE.Vector2(r, y)), segmentos);
+// cilindro entre dois pontos
+function haste(a, b, raio, material) {
+  const d = new THREE.Vector3().subVectors(b, a);
+  const m = malha(geo.cilindro, material, 0, 0, 0, raio, d.length(), raio);
+  m.position.copy(a).addScaledVector(d, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+  return m;
+}
 
+const geoBaseArmilar = torno([[0, 0], [0.068, 0], [0.07, 0.006], [0.062, 0.014], [0.04, 0.02], [0.02, 0.028], [0.012, 0.04], [0, 0.04]]);
 function esferaArmilar() {
-  const grupo = new THREE.Group();
-  grupo.add(malha(geo.cilindro, materiais.latao, 0, 0.01, 0, 0.07, 0.02, 0.07));
-  grupo.add(malha(geo.cilindro, materiais.latao, 0, 0.06, 0, 0.008, 0.1, 0.008));
-  const aneis = new THREE.Group();
-  aneis.position.y = 0.2;
-  for (const [rx, ry] of [[0, 0], [Math.PI / 2, 0], [Math.PI / 2, Math.PI / 2], [0.4, 0.9]]) {
-    const a = malha(geo.anel, materiais.latao, 0, 0, 0, 0.1);
-    a.rotation.set(rx, ry, 0);
-    aneis.add(a);
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geoBaseArmilar, materiais.lataoEscuro));
+  g.add(haste(new THREE.Vector3(0, 0.04, 0), new THREE.Vector3(0, 0.115, 0), 0.006, materiais.latao));
+  const centro = new THREE.Vector3(0, 0.225, 0);
+  // meridiano fixo, inclinado na latitude
+  const fixo = new THREE.Group();
+  fixo.position.copy(centro);
+  fixo.add(malha(geo.anel, materiais.lataoEscuro, 0, 0, 0, 0.11));
+  fixo.rotation.y = Math.PI / 2;
+  g.add(fixo);
+  // esfera que gira: equador, eclíptica larga, coluros, eixo e globo
+  const gira = new THREE.Group();
+  gira.position.copy(centro);
+  gira.rotation.z = 0.41;
+  const eq = malha(geo.anel, materiais.latao, 0, 0, 0, 0.095);
+  eq.rotation.x = Math.PI / 2;
+  const ecl = malha(geo.faixa, materiais.latao, 0, 0, 0, 0.095, 0.095, 0.095);
+  ecl.rotation.set(Math.PI / 2 + 0.41, 0, 0);
+  const c1 = malha(geo.anel, materiais.latao, 0, 0, 0, 0.095);
+  const c2 = malha(geo.anel, materiais.latao, 0, 0, 0, 0.095);
+  c2.rotation.y = Math.PI / 2;
+  for (const tr of [0.04, -0.04]) {
+    const t = malha(geo.anel, materiais.latao, 0, tr, 0, Math.sqrt(0.095 ** 2 - tr ** 2));
+    t.rotation.x = Math.PI / 2;
+    gira.add(t);
   }
-  aneis.add(malha(geo.esfera, materiais.lua, 0, 0, 0, 0.025));
-  aneis.rotation.z = 0.4;
-  grupo.add(aneis);
-  return { obj: grupo, largura: 0.24, animar: (t) => (aneis.rotation.y = t * 0.3) };
+  gira.add(eq, ecl, c1, c2, malha(geo.esfera, materiais.globo, 0, 0, 0, 0.028));
+  gira.add(haste(new THREE.Vector3(0, -0.125, 0), new THREE.Vector3(0, 0.125, 0), 0.003, materiais.latao));
+  g.add(gira);
+  return { obj: g, largura: 0.24, animar: (t) => (gira.rotation.y = t * 0.25) };
 }
 
+const geoBaseLua = torno([[0, 0], [0.06, 0], [0.062, 0.008], [0.05, 0.016], [0.012, 0.022], [0, 0.022]]);
+const geoTacaLua = torno([[0, 0], [0.006, 0], [0.03, 0.025], [0.034, 0.03], [0.03, 0.031]]);
 function luminariaLua() {
-  const grupo = new THREE.Group();
-  grupo.add(malha(geo.cilindro, materiais.metalEscuro, 0, 0.012, 0, 0.06, 0.024, 0.06));
-  grupo.add(malha(geo.cilindro, materiais.metalEscuro, 0, 0.06, 0, 0.006, 0.08, 0.006));
-  grupo.add(malha(geo.esfera, materiais.lua, 0, 0.19, 0, 0.1));
-  return { obj: grupo, largura: 0.24 };
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geoBaseLua, materiais.metalEscuro));
+  g.add(haste(new THREE.Vector3(0, 0.02, 0), new THREE.Vector3(0, 0.1, 0), 0.005, materiais.latao));
+  g.add(malha(geoTacaLua, materiais.latao, 0, 0.098, 0));
+  const lua = malha(geo.esfera, materiais.lua, 0, 0.2, 0, 0.085);
+  lua.rotation.set(0.3, 1.2, 0);
+  g.add(lua);
+  return { obj: g, largura: 0.2, animar: (t) => (lua.rotation.y = 1.2 + t * 0.05) };
 }
 
+// faces da BoxGeometry: +x, -x, +y, -y, +z, -z. Deitado (girado 90° em z):
+// ±x viram capas (em cima/embaixo), ±y viram as pontas de páginas, +z é a lombada, -z o corte das páginas.
+function livroDeitado(rnd, comprimento, espessura, profundidade) {
+  const lomb = matsLombada[Math.floor(rnd() * N_LOMBADAS)];
+  const livro = malha(geo.caixa, [lomb, lomb, matPaginas, matPaginas, lomb, matPaginas], 0, 0, 0, espessura, comprimento, profundidade);
+  livro.rotation.z = Math.PI / 2;
+  const g = new THREE.Group();
+  g.add(livro);
+  return g;
+}
 function pilhaDeLivros(rnd) {
-  const grupo = new THREE.Group();
+  const g = new THREE.Group();
   let y = 0;
-  const n = 2 + Math.floor(rnd() * 3);
+  const n = 3 + Math.floor(rnd() * 3);
   for (let i = 0; i < n; i++) {
-    const h = 0.025 + rnd() * 0.03;
-    const cor = new THREE.Color().setHSL(rnd(), 0.35, 0.18 + rnd() * 0.15);
-    const m = new THREE.Mesh(geo.caixa, new THREE.MeshStandardMaterial({ color: cor, roughness: 0.75 }));
-    m.scale.set(0.2 + rnd() * 0.06, h, 0.15 + rnd() * 0.04);
-    m.position.set((rnd() - 0.5) * 0.02, y + h / 2, 0);
-    m.rotation.y = (rnd() - 0.5) * 0.35;
-    grupo.add(m);
-    y += h;
+    const esp = 0.022 + rnd() * 0.03;
+    const comp = 0.26 - i * 0.012 - rnd() * 0.02; // maiores embaixo
+    const livro = livroDeitado(rnd, comp, esp, 0.16 + rnd() * 0.03);
+    livro.position.set((rnd() - 0.5) * 0.015, y + esp / 2, 0);
+    livro.rotation.y = (rnd() - 0.5) * 0.12;
+    g.add(livro);
+    y += esp;
   }
-  return { obj: grupo, largura: 0.28 };
+  return { obj: g, largura: 0.27 };
 }
 
-function planta(rnd) {
-  const grupo = new THREE.Group();
-  grupo.add(malha(geo.cilindro, materiais.vaso, 0, 0.05, 0, 0.055, 0.1, 0.055));
-  const n = 4 + Math.floor(rnd() * 4);
+// folha em forma de lança (geometria plana levemente dobrada)
+function geoFolha(comp, larg, curva = 0.25) {
+  const s = new THREE.Shape();
+  s.moveTo(0, 0);
+  s.quadraticCurveTo(larg, comp * 0.35, 0, comp);
+  s.quadraticCurveTo(-larg, comp * 0.35, 0, 0);
+  const geom = new THREE.ShapeGeometry(s, 8);
+  const p = geom.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i) / comp;
+    p.setZ(i, curva * comp * y * y + Math.abs(p.getX(i)) * 0.3); // arqueia e faz a nervura
+  }
+  geom.computeVertexNormals();
+  return geom;
+}
+const folhas = [geoFolha(0.13, 0.03), geoFolha(0.1, 0.025), geoFolha(0.16, 0.028, 0.4)];
+const folhinha = geoFolha(0.035, 0.018, 0.1);
+const geoVaso = torno([[0, 0.004], [0.042, 0], [0.047, 0.006], [0.058, 0.085], [0.064, 0.09], [0.064, 0.102], [0.057, 0.102], [0.052, 0.09], [0, 0.09]]);
+
+function planta(rnd, { pendente = true } = {}) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geoVaso, materiais.ceramica));
+  g.add(malha(geo.cilindro, materiais.terra, 0, 0.092, 0, 0.051, 0.004, 0.051));
+  // tufo de folhas abrindo em leque
+  const n = 9 + Math.floor(rnd() * 5);
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rnd();
-    const r = 0.03 + rnd() * 0.05;
-    const f = malha(geo.folhagem, materiais.folha, Math.cos(a) * r, 0.13 + rnd() * 0.12, Math.sin(a) * r * 0.6, 0.035 + rnd() * 0.03);
-    f.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
-    grupo.add(f);
+    const f = new THREE.Mesh(folhas[i % 3], i % 4 === 0 ? materiais.folhaClara : materiais.folha);
+    f.position.set((rnd() - 0.5) * 0.02, 0.094, (rnd() - 0.5) * 0.02);
+    f.rotation.order = 'YXZ';
+    f.rotation.y = (i / n) * Math.PI * 2 + rnd() * 0.4;
+    f.rotation.x = -(0.15 + rnd() * 0.75); // inclina pra fora
+    g.add(f);
   }
-  // folhas que caem pela beira da prateleira
-  for (let i = 0; i < 3; i++) {
-    const f = malha(geo.folhagem, materiais.folha, (rnd() - 0.5) * 0.08, 0.04 - i * 0.07, 0.08 + i * 0.012, 0.028);
-    grupo.add(f);
+  if (pendente) {
+    // rama que passa pela beira da prateleira e cai na frente
+    const lado = rnd() < 0.5 ? -1 : 1;
+    const curva = new THREE.CubicBezierCurve3(
+      new THREE.Vector3(0.03 * lado, 0.1, 0.02),
+      new THREE.Vector3(0.06 * lado, 0.06, 0.2),
+      new THREE.Vector3(0.07 * lado, 0.0, 0.27),
+      new THREE.Vector3(0.08 * lado, -0.26, 0.25),
+    );
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(curva, 20, 0.0025, 5), materiais.caule));
+    for (let i = 1; i <= 12; i++) {
+      const t = i / 12.5;
+      const p = curva.getPoint(t);
+      const tan = curva.getTangent(t);
+      const f = new THREE.Mesh(folhinha, i % 3 === 0 ? materiais.folhaClara : materiais.folha);
+      f.position.copy(p);
+      f.lookAt(p.clone().add(new THREE.Vector3(i % 2 ? 1 : -1, 0, 0.6)));
+      f.rotateX(Math.atan2(tan.y, 1) * 0.5 - 0.6);
+      g.add(f);
+    }
   }
-  return { obj: grupo, largura: 0.2 };
+  return { obj: g, largura: 0.2 };
 }
 
-function maleta(rnd) {
-  const grupo = new THREE.Group();
-  const w = 0.3 + rnd() * 0.06;
-  grupo.add(malha(geo.caixa, materiais.metalEscuro, 0, 0.07, 0, w, 0.14, 0.24));
-  grupo.add(malha(geo.caixa, materiais.metal, 0, 0.145, 0, w * 0.4, 0.012, 0.03));
-  grupo.add(malha(geo.caixa, rnd() < 0.5 ? materiais.ledAzul : materiais.led, w * 0.3, 0.1, 0.121, 0.03, 0.008, 0.002));
-  return { obj: grupo, largura: w };
+const geoBulbo = torno([[0.006, 0], [0.038, 0.012], [0.042, 0.035], [0.03, 0.06], [0.007, 0.078], [0.006, 0.08]]);
+function ampulheta() {
+  const g = new THREE.Group();
+  for (const y of [0.006, 0.2]) g.add(malha(geo.cilindro, materiais.lataoEscuro, 0, y, 0, 0.055, 0.012, 0.055));
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI * 2;
+    g.add(haste(new THREE.Vector3(Math.cos(a) * 0.046, 0.012, Math.sin(a) * 0.046), new THREE.Vector3(Math.cos(a) * 0.046, 0.194, Math.sin(a) * 0.046), 0.004, materiais.latao));
+  }
+  const baixo = malha(geoBulbo, materiais.vidro, 0, 0.012, 0);
+  const cima = malha(geoBulbo, materiais.vidro, 0, 0.194, 0);
+  cima.scale.y = -1;
+  g.add(baixo, cima);
+  // areia: monte embaixo, resto em cima, filete no meio
+  const monte = malha(new THREE.ConeGeometry(1, 1, 24), materiais.areia, 0, 0.012 + 0.014, 0, 0.034, 0.028, 0.034);
+  const resto = malha(new THREE.ConeGeometry(1, 1, 24), materiais.areia, 0, 0.194 - 0.05, 0, 0.026, -0.022, 0.026);
+  g.add(monte, resto, malha(geo.cilindro, materiais.areia, 0, 0.1, 0, 0.0012, 0.07, 0.0012));
+  return { obj: g, largura: 0.14 };
 }
 
-const TIPOS = [esferaArmilar, luminariaLua, pilhaDeLivros, planta, planta, maleta, pilhaDeLivros];
-
-export function adereco(rnd) {
-  return TIPOS[Math.floor(rnd() * TIPOS.length)](rnd);
+const geoProjetor = torno([[0, 0], [0.06, 0], [0.064, 0.01], [0.058, 0.028], [0.03, 0.032], [0, 0.032]]);
+function holograma() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geoProjetor, materiais.metalEscuro));
+  const anel = malha(geo.anel, materiais.ledAzul, 0, 0.03, 0, 0.034, 0.034, 0.034);
+  anel.rotation.x = Math.PI / 2;
+  g.add(anel);
+  g.add(malha(geo.cone, materiais.holoLuz, 0, 0.1, 0, 0.07, -0.14, 0.07)); // feixe abrindo pra cima
+  const forma = malha(geo.icosa, materiais.holo, 0, 0.2, 0, 0.065);
+  const nucleo = malha(geo.icosa, materiais.holo, 0, 0.2, 0, 0.03);
+  g.add(forma, nucleo);
+  return {
+    obj: g,
+    largura: 0.2,
+    animar: (t) => {
+      forma.rotation.set(t * 0.4, t * 0.6, 0);
+      nucleo.rotation.set(-t * 0.7, -t * 0.5, 0);
+      forma.position.y = nucleo.position.y = 0.2 + Math.sin(t * 1.3) * 0.008;
+    },
+  };
 }
 
-/** Preenche um vão [x0, x1] de prateleira com alguns adereços, deixando respiro entre eles. */
-export function preencherVao(x0, x1, rnd, max = 3) {
+// aparador de livros em L (segura a fileira onde ela termina)
+function aparador() {
+  const g = new THREE.Group();
+  g.add(malha(geo.caixa, materiais.metalEscuro, 0, 0.11, 0, 0.01, 0.22, 0.15));
+  g.add(malha(geo.caixa, materiais.metalEscuro, 0.045, 0.003, 0, 0.09, 0.006, 0.15));
+  g.add(malha(geo.caixa, materiais.latao, -0.0055, 0.11, 0.0, 0.002, 0.2, 0.004)); // filete de latão
+  return { obj: g, largura: 0.02 };
+}
+
+const MODELOS = { esferaArmilar, luminariaLua, pilhaDeLivros, planta, ampulheta, holograma };
+
+// composições simétricas para prateleiras vazias: [modelo, posição relativa 0–1]
+const COMPOSICOES = [
+  [['luminariaLua', 0.5]],
+  [['pilhaDeLivros', 0.2], ['esferaArmilar', 0.78]],
+  [['planta', 0.22], ['holograma', 0.78]],
+  [['pilhaDeLivros', 0.14], ['ampulheta', 0.5], ['pilhaDeLivros', 0.86]],
+  [['esferaArmilar', 0.5]],
+  [['planta', 0.3], ['luminariaLua', 0.7]],
+  [['ampulheta', 0.25], ['pilhaDeLivros', 0.75]],
+];
+const SOLO = ['planta', 'ampulheta', 'luminariaLua', 'pilhaDeLivros', 'esferaArmilar'];
+
+/**
+ * Decide os adereços de um vão de prateleira.
+ * parcial: vão no fim de uma fileira de livros → aparador + no máximo 1 peça.
+ * vazio: prateleira inteira → uma composição simétrica.
+ */
+export function comporVao(vao, xMin, xMax, rnd, ordem) {
   const itens = [];
-  let x = x0 + 0.05 + rnd() * 0.15;
-  while (itens.length < max) {
-    const a = adereco(rnd);
-    if (x + a.largura > x1 - 0.03) break;
-    itens.push({ ...a, x: x + a.largura / 2 });
-    x += a.largura + 0.12 + rnd() * 0.45;
+  const add = (nome, x) => {
+    const m = MODELOS[nome](rnd);
+    itens.push({ ...m, x });
+  };
+  if (vao.x0 > xMin + 0.001) {
+    const ap = aparador();
+    itens.push({ ...ap, x: vao.x0 + 0.006 });
+    const livre0 = vao.x0 + 0.08;
+    if (vao.x1 - livre0 > 0.34) add(SOLO[ordem % SOLO.length], (livre0 + vao.x1) / 2);
+  } else {
+    const comp = COMPOSICOES[ordem % COMPOSICOES.length];
+    for (const [nome, rel] of comp) add(nome, xMin + 0.12 + (xMax - xMin - 0.24) * rel);
   }
   return itens;
 }
