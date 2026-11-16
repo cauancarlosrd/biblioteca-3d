@@ -221,13 +221,11 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
 
     // grupos consecutivos (área, subpasta); a lista já vem agrupada assim
     const grupos = [];
-    const totalArea = new Map();
     lista.forEach((l, i) => {
       const { area, sub } = areaESub(l.pasta);
       const g = grupos[grupos.length - 1];
       if (g && g.pasta === l.pasta) g.idx.push(i);
       else grupos.push({ pasta: l.pasta, area, sub, idx: [i] });
-      totalArea.set(area, (totalArea.get(area) || 0) + ocupa(dims[i]) + 0.01);
     });
 
     // ---- 1ª passada: distribui livros em estantes/prateleiras (coordenadas locais) ----
@@ -246,7 +244,6 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
       x = xMin;
       if (prat >= PRATELEIRAS) novaEstante();
     };
-    const livre = () => (PRATELEIRAS - prat - (x > xMin ? 1 : 0)) * UTIL;
     const marcar = (texto) => {
       if (x > xMin) {
         atual.divisores.push({ prat, x: x + DIVISOR / 2 - 0.002 });
@@ -260,10 +257,8 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
       const novaArea = g.area !== areaAnterior;
       if (!atual) novaEstante();
       else if (novaArea) {
-        // área nova começa numa prateleira nova; se for grande e não couber no resto, numa estante nova
-        if (x > xMin) novaPrateleira();
-        const total = totalArea.get(g.area);
-        if (atual.livros.length && total > livre() && total > PRATELEIRAS * UTIL * 0.5) novaEstante();
+        // cada pasta da raiz (área) tem sua própria estante; só ganha outra se encher
+        novaEstante();
       } else if (x > xMax - 0.3) {
         novaPrateleira();
       }

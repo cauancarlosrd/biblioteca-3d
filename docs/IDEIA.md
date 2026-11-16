@@ -5,7 +5,7 @@ Uma biblioteca 3D pra navegar na minha coleção de livros. O ponto principal é
 ## Princípios
 
 - **Os livros ficam comigo.** O repositório é público e só tem o código. Os livros são lidos localmente pelo navegador (File System Access API, com `<input webkitdirectory>` e arrastar-e-soltar como alternativa). Isso evita problemas de direitos autorais e o limite de tamanho do GitHub.
-- **A pasta vira o espaço.** Subpasta = estante, e pastas de nível mais alto = salas (fase 2).
+- **A pasta vira o espaço.** Cada pasta da raiz é uma estante (ou mais, só se encher), seguindo rigorosamente as pastas. Subpastas viram etiquetas e divisores nas prateleiras. Organizar a biblioteca = organizar as pastas.
 - **Os livros vêm dos dados.** A espessura sai do tamanho do arquivo (depois, do número de páginas). A cor sai de um hash do título, então é estável mas variada.
 
 ## Arquitetura

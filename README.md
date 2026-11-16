@@ -7,7 +7,7 @@ Uma biblioteca navegável em 3D feita a partir da sua pasta de livros. Você and
 ## Como usar
 
 1. Abra o site e clique em **Escolher pasta de livros**, ou arraste livros e pastas pra janela.
-2. Cada subpasta vira uma estante.
+2. Cada pasta na raiz vira uma estante (ou mais, se encher). As subpastas viram etiquetas na borda das prateleiras, com um divisor entre os livros.
 3. Pra se mover:
    - **W A S D** ou as setas andam (Shift corre);
    - **arrastar** com o mouse olha em volta;
