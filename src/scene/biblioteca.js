@@ -6,7 +6,7 @@ import { criarChao } from './chao.js';
 import { criarMagia } from './magia.js';
 import { materiais, MATERIAIS_FIXOS, materialLavagem, geoPlano, comporVao, tremularLuzes, geoCoroamento } from './cenario.js';
 import { criarNave, MATERIAIS_NAVE } from './nave.js';
-import { materialLivro, N_LOMBADAS, texAmbiente } from './texturas.js';
+import { materialLivro, N_LOMBADAS, LOMBADA_NEUTRA, texAmbiente } from './texturas.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -117,12 +117,30 @@ function texturaEtiqueta(texto, proporcao) {
 }
 
 function corDoLivro(livro) {
-  // a cor vem da textura; aqui só uma variação sutil de tom e brilho
+  // com capa: a cor da capa tinge a lombada de tecido
+  if (livro.meta?.cor) return new THREE.Color(livro.meta.cor);
+  // sem capa: a cor vem da textura; aqui só uma variação sutil de tom e brilho
   const h = hash(livro.titulo);
   const c = new THREE.Color().setHSL((h % 360) / 360, 0.25, 0.5);
   return new THREE.Color(1, 1, 1).lerp(c, 0.18).multiplyScalar(0.85 + ((h >> 11) % 30) / 100);
 }
-const lombadaDoLivro = (livro) => hash(livro.id + '#') % (N_LOMBADAS * 2);
+// índice no atlas (0–15; +8 = de ponta-cabeça). +16 = faixa neutra tingida com a cor da capa.
+const lombadaDoLivro = (livro) =>
+  livro.meta?.cor
+    ? 16 + LOMBADA_NEUTRA + (hash(livro.id + '#') % 2) * 8
+    : hash(livro.id + '#') % (N_LOMBADAS * 2);
+
+// altura e largura da capa: segue a proporção real da capa quando conhecida
+function formato(hh, proporcao) {
+  let altura = 0.25 + (hh % 100) / 900;
+  const p = proporcao || 0.64 + ((hh >> 8) % 80) / 1000;
+  let prof = altura * p;
+  if (prof < 0.15 || prof > 0.36) {
+    prof = Math.min(0.36, Math.max(0.15, prof));
+    altura = Math.min(0.37, Math.max(0.2, prof / p));
+  }
+  return { altura, prof };
+}
 
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -215,7 +233,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
   let animaveis = []; // adereços que se mexem (esfera armilar)
 
   // ---------------- montagem ----------------
-  function montar(lista) {
+  function montar(lista, { manterCamera = false } = {}) {
     cena.remove(grupo);
     grupo.traverse((o) => {
       if (!o.isMesh || Array.isArray(o.material) || o.material === matLivro || FIXOS.has(o.material)) return;
@@ -242,9 +260,11 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
     const dims = lista.map((livro) => {
       const hh = hash(livro.id);
       return {
-        espessura: Math.min(0.09, Math.max(0.025, 0.018 + Math.sqrt(livro.tamanho / 1e6) * 0.011)),
-        altura: 0.25 + (hh % 100) / 900,
-        prof: 0.18 + ((hh >> 8) % 80) / 1000,
+        // espessura real pelo número de páginas (quando já indexado); senão, pelo tamanho do arquivo
+        espessura: livro.paginas
+          ? Math.min(0.1, Math.max(0.014, 0.01 + livro.paginas * 0.000105))
+          : Math.min(0.09, Math.max(0.025, 0.018 + Math.sqrt(livro.tamanho / 1e6) * 0.011)),
+        ...formato(hh, livro.meta?.proporcao),
       };
     });
     const ocupa = (d) => d.espessura + 0.002;
@@ -441,9 +461,11 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
     malha.computeBoundingSphere();
     grupo.add(malha);
 
-    pos.set(0, OLHO, 2.5);
-    yaw = 0;
-    pitch = -0.05;
+    if (!manterCamera) {
+      pos.set(0, OLHO, 2.5);
+      yaw = 0;
+      pitch = -0.05;
+    }
     return { estantes: estante + 1 };
   }
 
@@ -532,13 +554,15 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
   }
 
   function alvoNaFrente() {
-    const frente = new THREE.Vector3(0, -0.05, -0.8).applyQuaternion(camera.quaternion);
+    // um pouco à esquerda, deixando o lado direito pro cartão com os dados do livro
+    const frente = new THREE.Vector3(-0.17, 0.0, -0.85).applyQuaternion(camera.quaternion);
     const p2 = camera.position.clone().add(frente);
     const q2 = camera.quaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(EIXO_Y, -Math.PI / 2));
     return { p2, q2 };
   }
 
-  async function puxar(i) {
+  /** capa: ImageBitmap (ou null) — vai na face +x, que fica virada pra câmera. */
+  async function puxar(i, capa = null) {
     if (puxado) return;
     const d = dados[i];
     const p0 = new THREE.Vector3();
@@ -549,7 +573,26 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
     malha.getColorAt(i, cor);
     const matPuxado = materialLivro({ instanciado: false, cor });
     matPuxado.userData.uLombada.value = lombadaDoLivro(livros[i]);
-    const mesh = new THREE.Mesh(geoCaixa, matPuxado);
+    let matCapa = matPuxado;
+    if (capa) {
+      const tex = new THREE.Texture(capa);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      tex.needsUpdate = true;
+      tex.flipY = false; // ImageBitmap ignora flipY: inverte pela transformação de UV
+      tex.repeat.set(1, -1);
+      tex.offset.set(0, 1);
+      // a luz que te acompanha fica atrás do livro; a capa brilha um pouco por conta própria
+      matCapa = new THREE.MeshStandardMaterial({
+        map: tex,
+        emissiveMap: tex,
+        emissive: new THREE.Color(0.62, 0.58, 0.52),
+        roughness: 0.6,
+        color: 0x9a9088,
+      });
+    }
+    // faces: +x (capa), -x, +y, -y, +z (lombada), -z
+    const mesh = new THREE.Mesh(geoCaixa, [matCapa, matPuxado, matPuxado, matPuxado, matPuxado, matPuxado]);
     mesh.position.copy(p0);
     mesh.quaternion.copy(q0);
     mesh.scale.copy(s);
@@ -563,10 +606,12 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
     pausado = true;
     await animar(0.35, (t) => mesh.position.lerpVectors(p0, p1, ease(t)));
     const { p2, q2 } = alvoNaFrente();
+    const s2 = s.clone().multiplyScalar(1.6); // de perto, maior, pra ver a capa
     await animar(0.55, (t) => {
       const e = ease(t);
       mesh.position.lerpVectors(p1, p2, e);
       mesh.quaternion.slerpQuaternions(q0, q2, e);
+      mesh.scale.lerpVectors(s, s2, e);
     });
   }
 
@@ -578,14 +623,21 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
     const { i, mesh, p0, q0, p1 } = puxado;
     const pA = mesh.position.clone();
     const qA = mesh.quaternion.clone();
+    const sA = mesh.scale.clone();
+    const s0 = new THREE.Vector3();
+    dados[i].matriz.decompose(new THREE.Vector3(), new THREE.Quaternion(), s0);
     await animar(0.5, (t) => {
       const e = ease(t);
       mesh.position.lerpVectors(pA, p1, e);
       mesh.quaternion.slerpQuaternions(qA, q0, e);
+      mesh.scale.lerpVectors(sA, s0, e);
     });
     await animar(0.3, (t) => mesh.position.lerpVectors(p1, p0, ease(t)));
     cena.remove(mesh);
-    mesh.material.dispose();
+    for (const m of new Set(mesh.material)) {
+      m.map?.isTexture && m.map !== matLivro.map && m.map.image instanceof ImageBitmap && m.map.dispose();
+      m.dispose();
+    }
     malha.setMatrixAt(i, dados[i].matriz);
     malha.instanceMatrix.needsUpdate = true;
     puxado = null;
@@ -730,7 +782,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar, aoAtril }) {
     devolver,
     voarAte,
     voarAteAtril,
-    definirAtril: (livro) => nave?.atril.definir(livro),
+    definirAtril: (livro, capa) => nave?.atril.definir(livro, capa),
     pausar: () => (pausado = true),
     destacar,
     get destacado() { return destacado; },

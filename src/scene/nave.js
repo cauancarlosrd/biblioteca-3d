@@ -340,7 +340,7 @@ function castical() {
 }
 
 /** Texto das páginas abertas do atril (canvas). */
-function texturaPaginas(titulo, pasta) {
+function texturaPaginas(titulo, pasta, capa, autor) {
   const c = document.createElement('canvas');
   c.width = 1024;
   c.height = 680;
@@ -357,16 +357,36 @@ function texturaPaginas(titulo, pasta) {
   dobra.addColorStop(1, 'rgba(80,55,25,0)');
   g.fillStyle = dobra;
   g.fillRect(452, 0, 120, 680);
-  g.fillStyle = '#5a1f14';
   g.textAlign = 'center';
-  g.font = 'italic 600 46px Georgia, serif';
-  g.fillText('O livro do acaso', 256, 150);
-  g.font = 'italic 28px Georgia, serif';
-  g.fillStyle = '#4a3418';
-  for (const [i, l] of ['Entre tantos, este', 'esperou por você.', '', '— toque na página —'].entries()) g.fillText(l, 256, 250 + i * 46);
-  g.fillStyle = '#8a6a30';
-  g.font = '90px Georgia, serif';
-  g.fillText('❦', 256, 560);
+  if (capa) {
+    // página esquerda: a capa do livro, como uma gravura colada
+    const altMax = 520;
+    const larMax = 380;
+    const esc = Math.min(larMax / capa.width, altMax / capa.height);
+    const w = capa.width * esc;
+    const h = capa.height * esc;
+    const x = 256 - w / 2;
+    const y = 330 - h / 2;
+    g.fillStyle = 'rgba(60,40,15,0.35)';
+    g.fillRect(x + 8, y + 10, w, h);
+    g.drawImage(capa, x, y, w, h);
+    g.strokeStyle = '#6a4a20';
+    g.lineWidth = 3;
+    g.strokeRect(x - 6, y - 6, w + 12, h + 12);
+    g.fillStyle = '#5a1f14';
+    g.font = 'italic 600 34px Georgia, serif';
+    g.fillText('O livro do acaso', 256, 52);
+  } else {
+    g.fillStyle = '#5a1f14';
+    g.font = 'italic 600 46px Georgia, serif';
+    g.fillText('O livro do acaso', 256, 150);
+    g.font = 'italic 28px Georgia, serif';
+    g.fillStyle = '#4a3418';
+    for (const [i, l] of ['Entre tantos, este', 'esperou por você.', '', '— toque na página —'].entries()) g.fillText(l, 256, 250 + i * 46);
+    g.fillStyle = '#8a6a30';
+    g.font = '90px Georgia, serif';
+    g.fillText('❦', 256, 560);
+  }
   // título quebrado em linhas na página direita
   g.fillStyle = '#2a1a0a';
   let tam = 52;
@@ -388,9 +408,13 @@ function texturaPaginas(titulo, pasta) {
   } while (linhas.length * (tam + 12) > 380 && tam > 22);
   const y0 = 300 - (linhas.length * (tam + 14)) / 2;
   linhas.forEach((l, i) => g.fillText(l, 768, y0 + i * (tam + 14)));
+  g.fillStyle = '#4a3418';
+  g.font = `italic 30px Georgia, serif`;
+  if (autor) g.fillText(autor.length > 34 ? autor.slice(0, 33) + '…' : autor, 768, 500);
   g.fillStyle = '#6a4a20';
-  g.font = `italic 26px Georgia, serif`;
+  g.font = `italic 24px Georgia, serif`;
   g.fillText(pasta || '', 768, 560);
+  if (capa) g.fillText('— toque na página para ler —', 768, 625);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
@@ -431,9 +455,9 @@ function criarAtril() {
   return {
     g,
     paginas,
-    definir(livro) {
+    definir(livro, capa) {
       paginas.material.map?.dispose();
-      paginas.material.map = texturaPaginas(livro?.titulo, livro?.pasta);
+      paginas.material.map = texturaPaginas(livro?.titulo, livro?.pasta, capa, livro?.autor);
       paginas.material.needsUpdate = true;
     },
   };

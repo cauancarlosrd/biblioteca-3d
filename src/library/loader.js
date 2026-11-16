@@ -1,3 +1,5 @@
+import { ler, gravar } from './db.js';
+
 // Lê livros do disco do usuário. Nada é enviado pra lugar nenhum:
 // os arquivos só são lidos pelo navegador, localmente.
 
@@ -9,14 +11,19 @@ const ehLivro = (nome) => !nome.startsWith('.') && EXTENSOES.includes(ext(nome))
 export function tituloDoArquivo(nome) {
   return nome
     .replace(/\.[^.]+$/, '')
+    .replace(/\s*[-–]\s*libgen\.(li|is|rs)\b/gi, '')
+    .replace(/\s*\((z-?lib(rary)?(\.(org|io))?)\)/gi, '')
+    .replace(/\s*\(\d{4}[^)]*\)/g, '') // (2016, Editora)
+    .replace(/_\s/g, ': ') // "Título_ subtítulo" (dois-pontos que viraram _)
     .replace(/[_]+/g, ' ')
     .replace(/\s+-\s+/g, ' — ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function criarLivro(nome, pasta, tamanho, getFile) {
+function criarLivro(nome, pasta, tamanho, getFile, modificado = 0) {
   return {
+    modificado,
     id: `${pasta}/${nome}`,
     nome,
     titulo: tituloDoArquivo(nome),
@@ -45,7 +52,7 @@ export async function lerHandle(dir, aoProgredir) {
         await andar(filho, `${caminho}/${nome}`);
       } else if (ehLivro(nome)) {
         const f = await filho.getFile();
-        livros.push(criarLivro(nome, caminho, f.size, () => filho.getFile()));
+        livros.push(criarLivro(nome, caminho, f.size, () => filho.getFile(), f.lastModified));
         aoProgredir?.(livros.length);
       }
     }
@@ -62,7 +69,7 @@ export function lerFileList(files) {
     const rel = f.webkitRelativePath || f.name;
     const partes = rel.split('/');
     partes.pop();
-    livros.push(criarLivro(f.name, partes.join('/') || 'Recebidos', f.size, async () => f));
+    livros.push(criarLivro(f.name, partes.join('/') || 'Recebidos', f.size, async () => f, f.lastModified));
   }
   return livros;
 }
@@ -90,7 +97,7 @@ export async function lerDrop(dataTransfer, aoProgredir) {
       for (const filho of filhos) await andar(filho, `${caminho}/${entry.name}`);
     } else if (ehLivro(entry.name)) {
       const f = await arquivoDe(entry);
-      livros.push(criarLivro(f.name, caminho.replace(/^\//, '') || 'Recebidos', f.size, async () => f));
+      livros.push(criarLivro(f.name, caminho.replace(/^\//, '') || 'Recebidos', f.size, async () => f, f.lastModified));
       aoProgredir?.(livros.length);
     }
   }
@@ -99,29 +106,14 @@ export async function lerDrop(dataTransfer, aoProgredir) {
 }
 
 // ---- lembrar a última pasta (só funciona com File System Access API) ----
-const DB = 'biblioteca-3d';
-function abrirDB() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(DB, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('kv');
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-}
 export async function salvarHandle(handle) {
   try {
-    const db = await abrirDB();
-    db.transaction('kv', 'readwrite').objectStore('kv').put(handle, 'pasta');
+    await gravar('kv', 'pasta', handle);
   } catch {}
 }
 export async function carregarHandle() {
   try {
-    const db = await abrirDB();
-    return await new Promise((res) => {
-      const r = db.transaction('kv').objectStore('kv').get('pasta');
-      r.onsuccess = () => res(r.result || null);
-      r.onerror = () => res(null);
-    });
+    return (await ler('kv', 'pasta')) || null;
   } catch {
     return null;
   }

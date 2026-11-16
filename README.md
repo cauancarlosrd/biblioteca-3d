@@ -12,15 +12,17 @@ Uma biblioteca navegável em 3D feita a partir da sua pasta de livros. Você and
    - **W A S D** ou as setas andam (Shift corre);
    - **arrastar** com o mouse olha em volta;
    - a **roda do mouse** avança.
-4. **Clique num livro** pra puxá-lo da estante e abrir. Esc ou "Devolver" põe o livro de volta.
-5. **🎲 Livro do acaso** sorteia um livro e voa até ele. O sorteio favorece os que você nunca abriu.
-6. **🔀 Nova ordem** embaralha a biblioteca. A ordem vem da `?seed=` na URL, então dá pra guardar ou compartilhar um arranjo.
+4. **Clique num livro** pra puxá-lo da estante. Ele vem até você mostrando a capa, com título, autor e número de páginas. Escolha **Ler** ou **Devolver à estante** (Esc).
+5. **🎲 Livro do acaso** sorteia um livro e o abre no **atril** no fundo da nave, com a capa. Toque nas páginas pra ler. O sorteio favorece os que você nunca abriu.
+6. **Busca** (tecla `/`): digite parte do título, do autor ou da pasta e a câmera voa até o livro.
+7. **🔀 Nova ordem** embaralha a biblioteca. A ordem vem da `?seed=` na URL, então dá pra guardar ou compartilhar um arranjo.
 
 Navegadores:
 
 - No **Chrome e no Edge**, o site lembra a pasta. Na próxima visita aparece o botão "Reabrir".
 - No **Firefox**, você escolhe a pasta de novo a cada visita.
-- PDFs abrem no leitor do próprio navegador. EPUB, DJVU, MOBI e CBZ aparecem nas estantes e abrem fora, por enquanto.
+- **Capas e páginas:** na primeira visita, o app lê em segundo plano a capa, o número de páginas, o título e o autor de cada PDF e EPUB. Do PDF ele lê só os pedaços necessários. Tudo fica guardado no IndexedDB do navegador, e a espessura de cada livro passa a ser proporcional às páginas.
+- **PDF** abre no leitor do próprio navegador. **EPUB** abre num leitor paginado (setas ← →) que lembra onde você parou. DJVU, MOBI e CBZ aparecem nas estantes e abrem fora.
 
 ## Desenvolvimento
 
@@ -47,9 +49,9 @@ src/
 Veja [docs/IDEIA.md](docs/IDEIA.md).
 
 - [x] **Fase 1 — MVP:** pasta → estantes → clicar → ler, mais o livro do acaso e a seed
-- [ ] **Fase 2 — Biblioteca:** salas por área, capas reais (pdf.js), cache de metadados
+- [x] **Fase 2 — Biblioteca:** nave gótica, capas reais (pdf.js), páginas, cache, busca, leitor de EPUB
 - [ ] **Fase 3 — Acaso:** mesa de leitura, rastro de luz, histórico mais rico
-- [ ] **Fase 4 — Acabamento:** leitor de EPUB, texto nas lombadas, busca, planta baixa, celular
+- [ ] **Fase 4 — Acabamento:** texto nas lombadas, planta baixa, celular, som ambiente
 
 ## Créditos das imagens
 

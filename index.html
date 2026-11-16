@@ -26,7 +26,14 @@
     </section>
 
     <header id="hud" hidden>
-      <span id="info"></span>
+      <div class="hud-esq">
+        <span id="info"></span>
+        <span id="indice" hidden></span>
+      </div>
+      <div class="busca-wrap">
+        <input id="busca" type="search" placeholder="Buscar livro, autor ou pasta…  ( / )" autocomplete="off" spellcheck="false" />
+        <ul id="resultados" hidden></ul>
+      </div>
       <div class="botoes">
         <button id="btn-acaso" class="primario" title="Sorteia um livro, de preferência um que você nunca abriu">🎲 Livro do acaso</button>
         <button id="btn-ordem" title="Embaralha a biblioteca (nova seed)">🔀 Nova ordem</button>
@@ -36,6 +43,17 @@
     </header>
 
     <div id="dica" hidden></div>
+
+    <aside id="cartao-livro" hidden>
+      <h2 class="c-titulo"></h2>
+      <p class="c-autor"></p>
+      <p class="c-detalhes"></p>
+      <p class="c-pasta"></p>
+      <div class="botoes">
+        <button class="c-ler primario">Ler</button>
+        <button class="c-devolver">Devolver à estante</button>
+      </div>
+    </aside>
 
     <section id="visualizador" hidden>
       <header>
