@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { hash } from '../random/acaso.js';
+import { areaESub } from '../library/loader.js';
 import { criarCeu } from './ceu.js';
 import { criarChao } from './chao.js';
 import { criarMagia } from './magia.js';
@@ -18,8 +19,6 @@ const VAO = (CASE_H - TABUA) / PRATELEIRAS;
 const CORREDOR = 1.8; // metade da largura do corredor
 const ESPACO = 0.12; // entre estantes vizinhas
 const PASSO = CASE_W + ESPACO;
-// formatos de estante [largura, prateleiras], do menor pro maior
-const FORMATOS = [[1.2, 2], [1.2, 3], [1.2, 4], [1.8, 3], [1.8, 4], [1.8, 5], [2.4, 5], [2.4, 6]];
 const OLHO = 1.55;
 
 const tmpM = new THREE.Matrix4();
@@ -74,18 +73,36 @@ function texturaRotulo(texto, sub) {
   return t;
 }
 
+function texturaEtiqueta(texto, proporcao) {
+  const h = 64;
+  const w = Math.round(h * proporcao);
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = '#1c130b';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = '#d9a75a';
+  g.fillRect(0, 0, 5, h); // filete dourado marcando o início
+  g.fillStyle = '#f1dfbf';
+  g.textBaseline = 'middle';
+  let tam = 38;
+  g.font = `600 ${tam}px Georgia, serif`;
+  while (g.measureText(texto).width > w - 20 && tam > 18) g.font = `600 ${(tam -= 2)}px Georgia, serif`;
+  let t = texto;
+  while (g.measureText(t).width > w - 20 && t.length > 3) t = t.slice(0, -2) + '…';
+  g.fillText(t, 14, h / 2 + 2);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 function corDoLivro(livro) {
   const h = hash(livro.titulo);
   const c = new THREE.Color();
   c.setHSL((h % 360) / 360, 0.3 + ((h >> 9) % 30) / 100, 0.22 + ((h >> 17) % 22) / 100);
   return c;
-}
-
-function rotuloDaPasta(pasta) {
-  const partes = pasta.split('/');
-  if (partes.length === 1) return { texto: 'Avulsos', sub: partes[0] };
-  const resto = partes.slice(1);
-  return { texto: resto[resto.length - 1], sub: resto.length > 1 ? resto.slice(0, -1).join(' › ') : null };
 }
 
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -185,8 +202,11 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     luzDestaque.intensity = 0;
 
     const tabuas = [];
-    let estante = -1;
     const cursorLado = { [-1]: 0, [1]: 0 }; // quanto cada lado do corredor já ocupou (em z)
+    const xMin = -CASE_W / 2 + TABUA + 0.01;
+    const xMax = CASE_W / 2 - TABUA - 0.01;
+    const UTIL = xMax - xMin;
+    const DIVISOR = 0.022; // espaço ocupado por um divisor de subtópico
 
     // dimensões de cada livro (determinísticas pelo id)
     const dims = lista.map((livro) => {
@@ -198,96 +218,142 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
       };
     });
     const ocupa = (d) => d.espessura + 0.002;
-    const util = (w) => w - 2 * TABUA - 0.02; // largura útil de uma prateleira
 
-    // monta uma estante de largura w e n prateleiras ao lado do corredor menos ocupado
-    function novaEstante(pasta, continuacao, w, n) {
-      estante++;
+    // grupos consecutivos (área, subpasta); a lista já vem agrupada assim
+    const grupos = [];
+    const totalArea = new Map();
+    lista.forEach((l, i) => {
+      const { area, sub } = areaESub(l.pasta);
+      const g = grupos[grupos.length - 1];
+      if (g && g.pasta === l.pasta) g.idx.push(i);
+      else grupos.push({ pasta: l.pasta, area, sub, idx: [i] });
+      totalArea.set(area, (totalArea.get(area) || 0) + ocupa(dims[i]) + 0.01);
+    });
+
+    // ---- 1ª passada: distribui livros em estantes/prateleiras (coordenadas locais) ----
+    const estantes = [];
+    let atual = null;
+    let prat = 0;
+    let x = xMin;
+    const novaEstante = () => {
+      atual = { areas: [], continua: false, livros: [], marcadores: [], divisores: [] };
+      estantes.push(atual);
+      prat = 0;
+      x = xMin;
+    };
+    const novaPrateleira = () => {
+      prat++;
+      x = xMin;
+      if (prat >= PRATELEIRAS) novaEstante();
+    };
+    const livre = () => (PRATELEIRAS - prat - (x > xMin ? 1 : 0)) * UTIL;
+    const marcar = (texto) => {
+      if (x > xMin) {
+        atual.divisores.push({ prat, x: x + DIVISOR / 2 - 0.002 });
+        x += DIVISOR;
+      }
+      atual.marcadores.push({ prat, x, texto });
+    };
+
+    let areaAnterior = null;
+    for (const g of grupos) {
+      const novaArea = g.area !== areaAnterior;
+      if (!atual) novaEstante();
+      else if (novaArea) {
+        // área nova começa numa prateleira nova; se for grande e não couber no resto, numa estante nova
+        if (x > xMin) novaPrateleira();
+        const total = totalArea.get(g.area);
+        if (atual.livros.length && total > livre() && total > PRATELEIRAS * UTIL * 0.5) novaEstante();
+      } else if (x > xMax - 0.3) {
+        novaPrateleira();
+      }
+      if (!atual.areas.includes(g.area)) atual.areas.push(g.area);
+      const rotulo = g.sub || g.area;
+      marcar(novaArea && atual.areas.length > 1 && g.sub ? `${g.area} › ${g.sub}` : rotulo);
+      areaAnterior = g.area;
+
+      for (const i of g.idx) {
+        if (x + dims[i].espessura > xMax) {
+          const antes = atual;
+          novaPrateleira();
+          if (atual !== antes) {
+            // a área continua numa estante nova
+            atual.areas.push(g.area);
+            atual.continua = true;
+            atual.marcadores.push({ prat, x, texto: rotulo });
+          }
+        }
+        atual.livros.push({ i, prat, x });
+        x += ocupa(dims[i]);
+      }
+    }
+
+    // ---- 2ª passada: geometria ----
+    estantes.forEach((e) => {
       const lado = cursorLado[-1] <= cursorLado[1] ? -1 : 1;
-      const z = -(cursorLado[lado] + w / 2);
-      cursorLado[lado] += w + ESPACO;
-      const altura = n * VAO + TABUA;
+      const z = -(cursorLado[lado] + CASE_W / 2);
+      cursorLado[lado] += CASE_W + ESPACO;
       const posE = new THREE.Vector3(lado * (CORREDOR + CASE_D / 2), 0, z);
       const q = new THREE.Quaternion().setFromAxisAngle(EIXO_Y, lado < 0 ? Math.PI / 2 : -Math.PI / 2);
       const matrizEstante = new THREE.Matrix4().compose(posE, q, new THREE.Vector3(1, 1, 1));
+      const noMundo = (px, py, pz, sx = 1, sy = 1, sz = 1) =>
+        matrizEstante.clone().multiply(new THREE.Matrix4().compose(
+          new THREE.Vector3(px, py, pz), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz),
+        ));
+      const base = (p) => (PRATELEIRAS - 1 - p) * VAO + TABUA;
 
-      const local = (px, py, pz, sx, sy, sz) =>
-        tabuas.push(
-          matrizEstante.clone().multiply(new THREE.Matrix4().compose(
-            new THREE.Vector3(px, py, pz), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz),
-          )),
-        );
-      local(-w / 2 + TABUA / 2, altura / 2, 0, TABUA, altura, CASE_D);
-      local(w / 2 - TABUA / 2, altura / 2, 0, TABUA, altura, CASE_D);
-      local(0, altura / 2, -CASE_D / 2 + TABUA / 2, w, altura, TABUA);
-      for (let k = 0; k <= n; k++) local(0, k * VAO + TABUA / 2, 0, w, TABUA, CASE_D);
+      tabuas.push(noMundo(-CASE_W / 2 + TABUA / 2, CASE_H / 2, 0, TABUA, CASE_H, CASE_D));
+      tabuas.push(noMundo(CASE_W / 2 - TABUA / 2, CASE_H / 2, 0, TABUA, CASE_H, CASE_D));
+      tabuas.push(noMundo(0, CASE_H / 2, -CASE_D / 2 + TABUA / 2, CASE_W, CASE_H, TABUA));
+      for (let k = 0; k <= PRATELEIRAS; k++) tabuas.push(noMundo(0, k * VAO + TABUA / 2, 0, CASE_W, TABUA, CASE_D));
 
-      const { texto, sub } = rotuloDaPasta(pasta);
-      const larguraPlaca = Math.max(1.1, w * 0.9);
+      // divisores finos entre subtópicos
+      for (const d of e.divisores) {
+        tabuas.push(noMundo(d.x, base(d.prat) + 0.15, -0.02, 0.008, 0.3, CASE_D * 0.85));
+      }
+
+      // placa no topo: a(s) área(s) desta estante
+      const texto = e.areas.join(' · ');
       const placa = new THREE.Mesh(
-        new THREE.PlaneGeometry(larguraPlaca, larguraPlaca * (160 / 1024)),
+        new THREE.PlaneGeometry(CASE_W * 0.9, CASE_W * 0.9 * (160 / 1024)),
         // cor acima de 1: o texto dourado passa do limiar do bloom e brilha
         new THREE.MeshBasicMaterial({
-          map: texturaRotulo(continuacao ? `${texto} (cont.)` : texto, sub),
+          map: texturaRotulo(texto, e.continua ? 'continuação' : null),
           color: new THREE.Color(1.6, 1.5, 1.35),
           fog: true,
         }),
       );
-      placa.applyMatrix4(matrizEstante.clone().multiply(new THREE.Matrix4().makeTranslation(0, altura + 0.2, CASE_D / 2)));
+      placa.applyMatrix4(noMundo(0, CASE_H + 0.2, CASE_D / 2));
       grupo.add(placa);
-      return { matrizEstante, lado };
-    }
 
-    // escolhe o menor formato que comporta os livros com folga
-    function formato(total) {
-      for (const [w, n] of FORMATOS) if (util(w) * n >= total * 1.15 + 0.05 * n) return [w, n];
-      return FORMATOS[FORMATOS.length - 1];
-    }
-
-    // agrupa índices por pasta (a lista já vem agrupada) e quebra pastas grandes em blocos
-    const capacidadeMax = util(CASE_W) * PRATELEIRAS * 0.85;
-    const blocos = [];
-    for (let i = 0; i < lista.length; i++) {
-      const ultimo = blocos[blocos.length - 1];
-      const mesma = ultimo && lista[ultimo.idx[0]].pasta === lista[i].pasta;
-      if (mesma && ultimo.total + ocupa(dims[i]) <= capacidadeMax) {
-        ultimo.idx.push(i);
-        ultimo.total += ocupa(dims[i]);
-      } else {
-        blocos.push({ idx: [i], total: ocupa(dims[i]), continuacao: mesma });
-      }
-    }
-
-    for (const bloco of blocos) {
-      const [w, n] = formato(bloco.total);
-      const { matrizEstante, lado } = novaEstante(lista[bloco.idx[0]].pasta, bloco.continuacao, w, n);
-      const xMin = -w / 2 + TABUA + 0.01;
-      const xMax = w / 2 - TABUA - 0.01;
-      const meta = bloco.total / n; // distribui igualmente entre as prateleiras
-      let prat = 0;
-      let x = xMin;
-      for (const i of bloco.idx) {
-        const { espessura, altura, prof } = dims[i];
-        const cheia = x + espessura > xMax || (x - xMin + espessura / 2 > meta && prat < n - 1);
-        if (cheia && x > xMin) {
-          prat++;
-          x = xMin;
-        }
-        const base = (n - 1 - Math.min(prat, n - 1)) * VAO + TABUA;
-        const local = new THREE.Matrix4().compose(
-          new THREE.Vector3(x + espessura / 2, base + altura / 2, CASE_D / 2 - prof / 2 - 0.015),
-          new THREE.Quaternion(),
-          new THREE.Vector3(espessura, altura, prof),
+      // plaquinhas na borda da prateleira, onde cada subtópico começa
+      for (const m of e.marcadores) {
+        // não invade a etiqueta seguinte na mesma prateleira
+        const proxima = e.marcadores.find((o) => o.prat === m.prat && o.x > m.x);
+        const largura = Math.max(0.12, Math.min(0.42, xMax - m.x, proxima ? proxima.x - m.x - 0.01 : Infinity));
+        const etiqueta = new THREE.Mesh(
+          new THREE.PlaneGeometry(largura, 0.06),
+          new THREE.MeshBasicMaterial({
+            map: texturaEtiqueta(m.texto, largura / 0.06),
+            color: new THREE.Color(1.5, 1.4, 1.25),
+            fog: true,
+          }),
         );
-        x += ocupa(dims[i]);
-        const matriz = matrizEstante.clone().multiply(local);
+        etiqueta.applyMatrix4(noMundo(m.x + largura / 2, base(m.prat) - TABUA / 2 - 0.006, CASE_D / 2 + 0.004));
+        grupo.add(etiqueta);
+      }
+
+      for (const { i, prat: p, x: bx } of e.livros) {
+        const { espessura, altura, prof } = dims[i];
+        const matriz = noMundo(bx + espessura / 2, base(p) + altura / 2, CASE_D / 2 - prof / 2 - 0.015, espessura, altura, prof);
         dados[i] = {
           matriz,
           normal: new THREE.Vector3(-lado, 0, 0),
           posicao: new THREE.Vector3().setFromMatrixPosition(matriz),
         };
       }
-    }
+    });
+    const estante = estantes.length - 1;
     comprimento = Math.max(cursorLado[-1], cursorLado[1]);
 
     const tabuasMesh = new THREE.InstancedMesh(geoCaixa, matMadeira, tabuas.length);

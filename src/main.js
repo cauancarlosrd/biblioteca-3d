@@ -1,7 +1,7 @@
 import './style.css';
 import {
   suportaSeletorDePasta, escolherPasta, lerHandle, lerFileList, lerDrop,
-  salvarHandle, carregarHandle, gerarDemo,
+  salvarHandle, carregarHandle, gerarDemo, areaESub,
 } from './library/loader.js';
 import { mulberry32, embaralhar, lerSeed, novaSeed, livroDoAcaso, registrarAbertura } from './random/acaso.js';
 import { criarBiblioteca } from './scene/biblioteca.js';
@@ -53,18 +53,25 @@ function escapar(s) {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
-/** Agrupa por pasta e embaralha (pastas e livros) com a semente. */
+/** Agrupa por área → subpasta e embaralha tudo (áreas, subpastas, livros) com a semente. */
 function arranjar() {
   const rnd = mulberry32(seed);
-  const porPasta = new Map();
+  const porArea = new Map(); // área → (pasta → livros)
   for (const l of todos) {
-    if (!porPasta.has(l.pasta)) porPasta.set(l.pasta, []);
-    porPasta.get(l.pasta).push(l);
+    const { area } = areaESub(l.pasta);
+    if (!porArea.has(area)) porArea.set(area, new Map());
+    const pastas = porArea.get(area);
+    if (!pastas.has(l.pasta)) pastas.set(l.pasta, []);
+    pastas.get(l.pasta).push(l);
   }
-  const pastas = embaralhar([...porPasta.keys()].sort(), rnd);
-  ordem = pastas.flatMap((p) => embaralhar(porPasta.get(p), rnd));
+  let nPastas = 0;
+  ordem = embaralhar([...porArea.keys()].sort(), rnd).flatMap((area) => {
+    const pastas = porArea.get(area);
+    nPastas += pastas.size;
+    return embaralhar([...pastas.keys()].sort(), rnd).flatMap((p) => embaralhar(pastas.get(p), rnd));
+  });
   const { estantes } = biblioteca.montar(ordem);
-  info.textContent = `${ordem.length} livros · ${porPasta.size} pastas · ${estantes} estantes · seed ${seed}`;
+  info.textContent = `${ordem.length} livros · ${porArea.size} áreas · ${nPastas} pastas · ${estantes} estantes · seed ${seed}`;
 }
 
 function carregar(livros, { somar = false } = {}) {

@@ -146,3 +146,9 @@ export function gerarDemo(n = 700) {
   }
   return livros;
 }
+
+/** "livros/Matemática/Cálculo" → { area: "Matemática", sub: "Cálculo" }. */
+export function areaESub(pasta) {
+  const partes = pasta.split('/');
+  return { area: partes[1] ?? 'Avulsos', sub: partes.slice(2).join(' › ') };
+}
