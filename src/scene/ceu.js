@@ -244,8 +244,8 @@ function criarPlaneta() {
     grupo.add(lua);
   }
 
-  // longe, à direita e acima do fim do corredor
-  grupo.position.set(55, 28, -120);
+  // longe, acima e um pouco à direita do fim da nave (visível entre as nervuras)
+  grupo.position.set(18, 40, -125);
   return grupo;
 }
 

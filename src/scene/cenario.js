@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-import { texLombadas, texMetal, aplicarMapaMundo, N_LOMBADAS } from './texturas.js';
+import { texLombadas, texMetal, texMadeira, aplicarMapaMundo, N_LOMBADAS } from './texturas.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Cenário de estação espacial: materiais, fitas de LED, arcos do corredor
 // e adereços que ocupam (de forma organizada) o espaço vazio das prateleiras.
 
 // cores acima de 1 passam do limiar do bloom e "acendem"
-export const COR_LED = new THREE.Color(1.35, 0.62, 0.2);
+// âmbar de lamparina (tremula um pouco, ver tremularLuzes)
+export const COR_LED = new THREE.Color(1.05, 0.48, 0.14);
 const COR_LED_FRACA = new THREE.Color(0.55, 0.24, 0.08);
 
 export const materiais = {
@@ -28,6 +30,8 @@ export const materiais = {
   holoLuz: new THREE.MeshBasicMaterial({ color: new THREE.Color(0.2, 0.55, 0.8), transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
 };
 aplicarMapaMundo(materiais.metal, texMetal, 1.6);
+materiais.madeira = new THREE.MeshStandardMaterial({ color: 0xc8b8a8, roughness: 0.7 });
+aplicarMapaMundo(materiais.madeira, texMadeira, 1.2);
 
 // lua da luminária: textura de crateras desenhada em canvas
 function texturaLua() {
@@ -337,6 +341,73 @@ export function comporVao(vao, xMin, xMax, rnd, ordem) {
     for (const [nome, rel] of comp) add(nome, xMin + 0.12 + (xMax - xMin - 0.24) * rel);
   }
   return itens;
+}
+
+// ---------------------------------------------------------------------------
+// luz das lamparinas tremulando (fitas sob as prateleiras + luz lavando os livros)
+export function tremularLuzes(t) {
+  const f = 1 + Math.sin(t * 7.1) * 0.035 + Math.sin(t * 13.7) * 0.025 + Math.sin(t * 2.3) * 0.03;
+  materiais.led.color.copy(COR_LED).multiplyScalar(f);
+  materialLavagem.opacity = 0.055 * f;
+}
+
+/**
+ * Coroamento gótico de uma estante (geometria única, instanciada):
+ * frontão ogival atrás da placa, moldura em arco, três pináculos.
+ * Origem no topo central da estante, frente em +z.
+ */
+export function geoCoroamento(largura, profundidade) {
+  const partes = [];
+  const a = 0.62;
+  const r = a * 1.4;
+  const c = r - a;
+  const tA = Math.acos(-c / r);
+  const arco = (aa, rr, n = 16) => {
+    const cc = rr - aa;
+    const t0 = Math.acos(-cc / rr);
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = Math.PI + (t0 - Math.PI) * (i / n);
+      pts.push(new THREE.Vector2(cc + rr * Math.cos(t), rr * Math.sin(t)));
+    }
+    return [...pts, ...pts.slice(0, -1).reverse().map((p) => new THREE.Vector2(-p.x, p.y))];
+  };
+  void tA;
+  // painel do frontão: retângulo 0.28 + ogiva
+  const base = 0.28;
+  const contorno = [new THREE.Vector2(-a, 0), new THREE.Vector2(a, 0), ...arco(a, r).reverse().map((p) => new THREE.Vector2(p.x, p.y + base))];
+  const painel = new THREE.ExtrudeGeometry(new THREE.Shape(contorno), { depth: 0.04, bevelEnabled: false });
+  painel.translate(0, 0, -profundidade / 2 + 0.06);
+  partes.push(painel);
+  // moldura em arco na frente do painel
+  const fora = arco(a + 0.035, r + 0.035);
+  const dentro = arco(a - 0.035, r - 0.035).reverse();
+  const moldura = new THREE.ExtrudeGeometry(new THREE.Shape([...fora, ...dentro]), { depth: 0.03, bevelEnabled: false });
+  moldura.translate(0, base, -profundidade / 2 + 0.1);
+  partes.push(moldura);
+  // pináculos: um no ápice, dois nos cantos da estante
+  const apice = base + Math.sqrt(r * r - c * c);
+  const pinaculo = (x, y, z, h) => {
+    const cubo = new THREE.BoxGeometry(0.07, 0.08, 0.07);
+    cubo.translate(x, y + 0.04, z);
+    const cone = new THREE.ConeGeometry(0.045, h, 4);
+    cone.rotateY(Math.PI / 4);
+    cone.translate(x, y + 0.08 + h / 2, z);
+    const bola = new THREE.SphereGeometry(0.018, 6, 4);
+    bola.translate(x, y + 0.08 + h, z);
+    partes.push(cubo, cone, bola);
+  };
+  pinaculo(0, apice - 0.02, -profundidade / 2 + 0.08, 0.22);
+  for (const s of [-1, 1]) pinaculo(s * (largura / 2 - 0.05), 0.0, profundidade / 2 - 0.06, 0.28);
+  // cornija (aba saliente no topo da estante)
+  const cornija = new THREE.BoxGeometry(largura + 0.1, 0.07, profundidade + 0.08);
+  cornija.translate(0, -0.035, 0.02);
+  partes.push(cornija);
+  // remove atributos que nem todas têm, pra poder juntar
+  for (const p of partes) {
+    for (const k of Object.keys(p.attributes)) if (!['position', 'normal', 'uv'].includes(k)) p.deleteAttribute(k);
+  }
+  return mergeGeometries(partes.map((p) => (p.index ? p.toNonIndexed() : p)));
 }
 
 // ---------------------------------------------------------------------------

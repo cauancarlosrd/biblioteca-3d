@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
-import { texPiso } from './texturas.js';
+import { texLajes } from './texturas.js';
 
-// Chão: placas de metal escuro com um reflexo molhado por baixo.
+// Chão: lajes de pedra antigas, levemente úmidas (um reflexo discreto por baixo).
 
 const TAMANHO = 600;
 const ESCALA_REFLEXO = 0.5; // resolução do reflexo em relação à tela
@@ -18,7 +18,7 @@ export function criarChao(renderer, { corredor = 1.8 } = {}) {
   const espelho = new Reflector(new THREE.PlaneGeometry(TAMANHO, TAMANHO), {
     textureWidth: w,
     textureHeight: h,
-    color: 0x24222f, // escurece e tinge o reflexo
+    color: 0x17161c, // escurece e tinge o reflexo
     clipBias: 0.003,
   });
   espelho.rotation.x = -Math.PI / 2;
@@ -33,7 +33,7 @@ export function criarChao(renderer, { corredor = 1.8 } = {}) {
       uniforms: {
         uCamera: { value: new THREE.Vector3() },
         uTempo: { value: 0 },
-        uPiso: { value: texPiso },
+        uPiso: { value: texLajes },
         uNevoa: { value: new THREE.Color(0x07061a) },
         uCorredor: { value: corredor },
       },
@@ -54,14 +54,11 @@ export function criarChao(renderer, { corredor = 1.8 } = {}) {
         void main() {
           vec2 p = vMundo.xz;
           float d = distance(p, uCamera.xz);
-          vec3 piso = texture2D(uPiso, p / 2.4).rgb;
-          vec3 cor = piso * piso * 0.5;            // escurece e dá contraste
-          float alfa = 0.68;
+          vec3 piso = texture2D(uPiso, p / 3.2).rgb;
+          vec3 cor = piso * piso * 0.75;           // escurece e dá contraste
+          float alfa = 0.93;                        // pedra: só um brilho úmido bem discreto
           // poça de luz quente sob os pés
           cor += vec3(1.0, 0.72, 0.45) * exp(-d * d * 0.25) * 0.05;
-          // luz laranja das fitas do chão espalhando junto às estantes
-          float borda = abs(abs(p.x) - (uCorredor - 0.04));
-          cor += vec3(1.0, 0.5, 0.18) * exp(-borda * borda * 40.0) * 0.06;
           // longe, dissolve na névoa
           float f = smoothstep(10.0, 48.0, d);
           cor = mix(cor, uNevoa, f);

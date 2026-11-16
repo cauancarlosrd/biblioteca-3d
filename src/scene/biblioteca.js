@@ -4,7 +4,8 @@ import { areaESub } from '../library/loader.js';
 import { criarCeu } from './ceu.js';
 import { criarChao } from './chao.js';
 import { criarMagia } from './magia.js';
-import { materiais, MATERIAIS_FIXOS, materialLavagem, geoPlano, comporVao, criarEstrutura } from './cenario.js';
+import { materiais, MATERIAIS_FIXOS, materialLavagem, geoPlano, comporVao, tremularLuzes, geoCoroamento } from './cenario.js';
+import { criarNave, MATERIAIS_NAVE } from './nave.js';
 import { materialLivro, N_LOMBADAS } from './texturas.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -29,32 +30,48 @@ const tmpQ = new THREE.Quaternion();
 const tmpS = new THREE.Vector3();
 const EIXO_Y = new THREE.Vector3(0, 1, 0);
 
-const FONTE = '"Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif';
+const FONTE = 'Georgia, "Times New Roman", serif';
 
+// placa de madeira escura com letras douradas e filete duplo
 function texturaRotulo(texto, sub) {
   const c = document.createElement('canvas');
   c.width = 1024;
   c.height = 160;
   const g = c.getContext('2d');
-  g.fillStyle = '#0b0a10';
+  const fundo = g.createLinearGradient(0, 0, 0, 160);
+  fundo.addColorStop(0, '#24180e');
+  fundo.addColorStop(1, '#140d07');
+  g.fillStyle = fundo;
   g.fillRect(0, 0, 1024, 160);
-  // moldura laranja que brilha (passa do limiar do bloom)
-  g.strokeStyle = '#ff9a3c';
-  g.lineWidth = 5;
+  g.strokeStyle = '#b8924e';
+  g.lineWidth = 4;
   g.strokeRect(10, 10, 1004, 140);
-  g.fillStyle = '#ff9a3c';
-  g.fillRect(10, 10, 16, 140); // faixa lateral
-  g.fillStyle = '#fff4e6';
+  g.lineWidth = 1.5;
+  g.strokeRect(20, 20, 984, 120);
+  g.fillStyle = '#b8924e';
+  for (const x of [52, 972]) {
+    g.save();
+    g.translate(x, 80);
+    g.rotate(Math.PI / 4);
+    g.fillRect(-9, -9, 18, 18); // losango nos cantos
+    g.restore();
+  }
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  let tam = 66;
+  const maiusc = texto.toUpperCase();
+  let tam = 60;
   g.font = `600 ${tam}px ${FONTE}`;
-  while (g.measureText(texto).width > 920 && tam > 28) g.font = `600 ${(tam -= 4)}px ${FONTE}`;
-  g.fillText(texto, 524, sub ? 66 : 82);
+  g.letterSpacing = '6px';
+  while (g.measureText(maiusc).width > 840 && tam > 26) g.font = `600 ${(tam -= 3)}px ${FONTE}`;
+  g.fillStyle = '#e3c27f';
+  g.shadowColor = 'rgba(0,0,0,0.8)';
+  g.shadowOffsetY = 2;
+  g.fillText(maiusc, 512, sub ? 68 : 82);
   if (sub) {
-    g.fillStyle = '#ffb877';
-    g.font = `400 30px ${FONTE}`;
-    g.fillText(sub, 524, 122);
+    g.letterSpacing = '2px';
+    g.fillStyle = '#b8924e';
+    g.font = `italic 28px ${FONTE}`;
+    g.fillText(sub, 512, 120);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -62,6 +79,7 @@ function texturaRotulo(texto, sub) {
   return t;
 }
 
+// plaquinha de latão com letras gravadas
 function texturaEtiqueta(texto, proporcao) {
   const h = 64;
   const w = Math.round(h * proporcao);
@@ -69,18 +87,29 @@ function texturaEtiqueta(texto, proporcao) {
   c.width = w;
   c.height = h;
   const g = c.getContext('2d');
-  g.fillStyle = '#0b0a10';
+  const lat = g.createLinearGradient(0, 0, 0, h);
+  lat.addColorStop(0, '#b8955a');
+  lat.addColorStop(0.5, '#8f6d36');
+  lat.addColorStop(1, '#6e5228');
+  g.fillStyle = lat;
   g.fillRect(0, 0, w, h);
-  g.fillStyle = '#ff9a3c';
-  g.fillRect(0, 0, 6, h); // filete laranja marcando o início
-  g.fillStyle = '#fff4e6';
+  g.strokeStyle = '#4a3516';
+  g.lineWidth = 3;
+  g.strokeRect(2, 2, w - 4, h - 4);
+  g.fillStyle = '#3a2810';
+  for (const x of [9, w - 9]) {
+    g.beginPath();
+    g.arc(x, h / 2, 3, 0, Math.PI * 2); // parafusinhos
+    g.fill();
+  }
+  g.fillStyle = '#2a1a0a';
   g.textBaseline = 'middle';
-  let tam = 38;
+  let tam = 36;
   g.font = `600 ${tam}px ${FONTE}`;
-  while (g.measureText(texto).width > w - 20 && tam > 18) g.font = `600 ${(tam -= 2)}px ${FONTE}`;
+  while (g.measureText(texto).width > w - 34 && tam > 18) g.font = `600 ${(tam -= 2)}px ${FONTE}`;
   let t = texto;
-  while (g.measureText(t).width > w - 20 && t.length > 3) t = t.slice(0, -2) + '…';
-  g.fillText(t, 14, h / 2 + 2);
+  while (g.measureText(t).width > w - 34 && t.length > 3) t = t.slice(0, -2) + '…';
+  g.fillText(t, 18, h / 2 + 2);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
@@ -117,8 +146,8 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   const chao = criarChao(renderer);
   cena.add(chao.grupo);
 
-  cena.add(new THREE.HemisphereLight(0xb4bcff, 0x24163f, 0.75));
-  const luar = new THREE.DirectionalLight(0x9aa6ff, 0.5);
+  cena.add(new THREE.HemisphereLight(0xa8b0e8, 0x2a1a30, 0.42));
+  const luar = new THREE.DirectionalLight(0x9aa6ff, 0.3);
   luar.position.set(-3, 10, 4);
   cena.add(luar);
   const magia = criarMagia(cena, camera, renderer);
@@ -133,7 +162,10 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   const geoCaixa = new THREE.BoxGeometry(1, 1, 1);
   const matLivro = materialLivro({ instanciado: true });
   const geoLivro = new THREE.BoxGeometry(1, 1, 1);
-  const matMadeira = materiais.metal;
+  const matMadeira = materiais.madeira;
+  const FIXOS = new Set([...MATERIAIS_FIXOS, ...MATERIAIS_NAVE]);
+  const geoCoroa = geoCoroamento(CASE_W, CASE_D);
+  let nave = null;
 
   // destaque do "livro do acaso"
   const brilho = new THREE.Mesh(
@@ -182,7 +214,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   function montar(lista) {
     cena.remove(grupo);
     grupo.traverse((o) => {
-      if (!o.isMesh || Array.isArray(o.material) || o.material === matLivro || MATERIAIS_FIXOS.has(o.material)) return;
+      if (!o.isMesh || Array.isArray(o.material) || o.material === matLivro || FIXOS.has(o.material)) return;
       o.material.map?.dispose();
       o.material.dispose();
     });
@@ -289,7 +321,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     // ---- 2ª passada: geometria ----
     const leds = [];
     const lavagens = [];
-    const ledsChao = [];
+    const coroas = [];
     estantes.forEach((e, ie) => {
       const lado = cursorLado[-1] <= cursorLado[1] ? -1 : 1;
       const z = -(cursorLado[lado] + CASE_W / 2);
@@ -314,8 +346,9 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
         leds.push(noMundo(0, k * VAO - 0.007, CASE_D / 2 - 0.03, CASE_W - 0.14, 0.01, 0.012));
         lavagens.push(noMundo(0, (k - 1) * VAO + TABUA + vaoUtil / 2, CASE_D / 2 - 0.004, CASE_W - 2 * TABUA, vaoUtil, 1));
       }
-      // luzinhas no chão em frente à estante
-      for (const lx of [-0.75, 0.75]) ledsChao.push(noMundo(lx, 0.012, CASE_D / 2 + 0.06, 0.4, 0.015, 0.04));
+      // coroamento gótico no topo e rodapé na base
+      coroas.push(noMundo(0, CASE_H, 0));
+      tabuas.push(noMundo(0, 0.05, 0.015, CASE_W + 0.06, 0.1, CASE_D + 0.05));
 
       // adereços no espaço que sobrou
       const rnd = mulberry32(hash(e.areas.join('|')) + ie);
@@ -340,7 +373,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
         // cor acima de 1: o texto dourado passa do limiar do bloom e brilha
         new THREE.MeshBasicMaterial({
           map: texturaRotulo(texto, e.continua ? 'continuação' : null),
-          color: new THREE.Color(1.05, 1.0, 0.95),
+          color: new THREE.Color(1.0, 1.0, 1.0),
           fog: true,
         }),
       );
@@ -356,7 +389,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
           new THREE.PlaneGeometry(largura, 0.06),
           new THREE.MeshBasicMaterial({
             map: texturaEtiqueta(m.texto, largura / 0.06),
-            color: new THREE.Color(1.0, 0.95, 0.9),
+            color: new THREE.Color(0.95, 0.95, 0.95),
             fog: true,
           }),
         );
@@ -387,9 +420,10 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     };
     instanciar(geoCaixa, matMadeira, tabuas);
     instanciar(geoCaixa, materiais.led, leds);
-    instanciar(geoCaixa, materiais.ledFraco, ledsChao);
+    instanciar(geoCoroa, matMadeira, coroas);
     instanciar(geoPlano, materialLavagem, lavagens).renderOrder = 2;
-    grupo.add(criarEstrutura({ corredor: CORREDOR, fundoEstante: CASE_D, comprimento }));
+    nave = criarNave({ comprimento });
+    grupo.add(nave.grupo);
 
     const n = Math.max(1, lista.length);
     geoLivro.setAttribute('aLombada', new THREE.InstancedBufferAttribute(
@@ -622,6 +656,8 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     ceu.atualizar(relogio.elapsedTime, camera.position);
     chao.atualizar(relogio.elapsedTime, camera.position);
     magia.atualizar(dt, relogio.elapsedTime);
+    nave?.atualizar(relogio.elapsedTime);
+    tremularLuzes(relogio.elapsedTime);
     for (const animar of animaveis) animar(relogio.elapsedTime);
 
     for (const a of animacoes) {
