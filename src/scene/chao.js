@@ -18,7 +18,7 @@ export function criarChao(renderer) {
   const espelho = new Reflector(new THREE.PlaneGeometry(TAMANHO, TAMANHO), {
     textureWidth: w,
     textureHeight: h,
-    color: 0x3a3850, // escurece e tinge o reflexo
+    color: 0x24222f, // escurece e tinge o reflexo
     clipBias: 0.003,
   });
   espelho.rotation.x = -Math.PI / 2;

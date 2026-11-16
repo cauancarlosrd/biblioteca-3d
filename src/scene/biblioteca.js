@@ -1,9 +1,10 @@
 import * as THREE from 'three';
-import { hash } from '../random/acaso.js';
+import { hash, mulberry32 } from '../random/acaso.js';
 import { areaESub } from '../library/loader.js';
 import { criarCeu } from './ceu.js';
 import { criarChao } from './chao.js';
 import { criarMagia } from './magia.js';
+import { materiais, MATERIAIS_FIXOS, materialLavagem, geoPlano, preencherVao, criarEstrutura } from './cenario.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -45,27 +46,32 @@ function texturaLivro() {
   return t;
 }
 
+const FONTE = '"Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif';
+
 function texturaRotulo(texto, sub) {
   const c = document.createElement('canvas');
   c.width = 1024;
   c.height = 160;
   const g = c.getContext('2d');
-  g.fillStyle = '#2b1d12';
+  g.fillStyle = '#0b0a10';
   g.fillRect(0, 0, 1024, 160);
-  g.strokeStyle = '#a8834f';
-  g.lineWidth = 6;
-  g.strokeRect(8, 8, 1008, 144);
-  g.fillStyle = '#f1dfbf';
+  // moldura laranja que brilha (passa do limiar do bloom)
+  g.strokeStyle = '#ff9a3c';
+  g.lineWidth = 5;
+  g.strokeRect(10, 10, 1004, 140);
+  g.fillStyle = '#ff9a3c';
+  g.fillRect(10, 10, 16, 140); // faixa lateral
+  g.fillStyle = '#fff4e6';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  let tam = 64;
-  g.font = `600 ${tam}px Georgia, serif`;
-  while (g.measureText(texto).width > 960 && tam > 28) g.font = `600 ${(tam -= 4)}px Georgia, serif`;
-  g.fillText(texto, 512, sub ? 68 : 82);
+  let tam = 66;
+  g.font = `600 ${tam}px ${FONTE}`;
+  while (g.measureText(texto).width > 920 && tam > 28) g.font = `600 ${(tam -= 4)}px ${FONTE}`;
+  g.fillText(texto, 524, sub ? 66 : 82);
   if (sub) {
-    g.fillStyle = '#b89a6e';
-    g.font = 'italic 30px Georgia, serif';
-    g.fillText(sub, 512, 124);
+    g.fillStyle = '#ffb877';
+    g.font = `400 30px ${FONTE}`;
+    g.fillText(sub, 524, 122);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -80,15 +86,15 @@ function texturaEtiqueta(texto, proporcao) {
   c.width = w;
   c.height = h;
   const g = c.getContext('2d');
-  g.fillStyle = '#1c130b';
+  g.fillStyle = '#0b0a10';
   g.fillRect(0, 0, w, h);
-  g.fillStyle = '#d9a75a';
-  g.fillRect(0, 0, 5, h); // filete dourado marcando o início
-  g.fillStyle = '#f1dfbf';
+  g.fillStyle = '#ff9a3c';
+  g.fillRect(0, 0, 6, h); // filete laranja marcando o início
+  g.fillStyle = '#fff4e6';
   g.textBaseline = 'middle';
   let tam = 38;
-  g.font = `600 ${tam}px Georgia, serif`;
-  while (g.measureText(texto).width > w - 20 && tam > 18) g.font = `600 ${(tam -= 2)}px Georgia, serif`;
+  g.font = `600 ${tam}px ${FONTE}`;
+  while (g.measureText(texto).width > w - 20 && tam > 18) g.font = `600 ${(tam -= 2)}px ${FONTE}`;
   let t = texto;
   while (g.measureText(t).width > w - 20 && t.length > 3) t = t.slice(0, -2) + '…';
   g.fillText(t, 14, h / 2 + 2);
@@ -111,7 +117,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+  renderer.toneMappingExposure = 1.0;
 
   const cena = new THREE.Scene();
   cena.background = new THREE.Color(0x03020a);
@@ -136,13 +142,13 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   // pós-processamento: bloom faz o que é muito claro (estrelas, orbe, placas) brilhar
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(cena, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.55, 0.82);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.6, 0.92);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
   const geoCaixa = new THREE.BoxGeometry(1, 1, 1);
   const matLivro = new THREE.MeshStandardMaterial({ map: texturaLivro(), roughness: 0.7 });
-  const matMadeira = new THREE.MeshStandardMaterial({ color: 0x5a3b22, roughness: 0.8 });
+  const matMadeira = materiais.metal;
 
   // destaque do "livro do acaso"
   const brilho = new THREE.Mesh(
@@ -185,18 +191,21 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
   let destacado = -1;
   let puxado = null; // { i, mesh, ida: {p0,q0,p1,p2,q2,s} }
   let animacoes = [];
+  let animaveis = []; // adereços que se mexem (esfera armilar)
 
   // ---------------- montagem ----------------
   function montar(lista) {
     cena.remove(grupo);
     grupo.traverse((o) => {
-      if (o.material?.map && o.material !== matLivro) o.material.map.dispose();
-      if (o.isMesh && o.material !== matLivro && o.material !== matMadeira) o.material.dispose();
+      if (!o.isMesh || o.material === matLivro || MATERIAIS_FIXOS.has(o.material)) return;
+      o.material.map?.dispose();
+      o.material.dispose();
     });
     grupo = new THREE.Group();
     cena.add(grupo);
     livros = lista;
     dados = [];
+    animaveis = [];
     destacado = -1;
     brilho.visible = false;
     luzDestaque.intensity = 0;
@@ -233,8 +242,15 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     let atual = null;
     let prat = 0;
     let x = xMin;
+    // guarda o espaço que sobrou na estante atual (vira lugar de adereços)
+    const fecharEstante = () => {
+      if (!atual || prat >= PRATELEIRAS) return;
+      if (xMax - x > 0.3) atual.vazios.push({ prat, x0: x > xMin ? x + 0.03 : xMin, x1: xMax });
+      for (let p = prat + 1; p < PRATELEIRAS; p++) atual.vazios.push({ prat: p, x0: xMin, x1: xMax });
+    };
     const novaEstante = () => {
-      atual = { areas: [], continua: false, livros: [], marcadores: [], divisores: [] };
+      fecharEstante();
+      atual = { areas: [], continua: false, livros: [], marcadores: [], divisores: [], vazios: [] };
       estantes.push(atual);
       prat = 0;
       x = xMin;
@@ -283,8 +299,13 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
       }
     }
 
+    fecharEstante();
+
     // ---- 2ª passada: geometria ----
-    estantes.forEach((e) => {
+    const leds = [];
+    const lavagens = [];
+    const ledsChao = [];
+    estantes.forEach((e, ie) => {
       const lado = cursorLado[-1] <= cursorLado[1] ? -1 : 1;
       const z = -(cursorLado[lado] + CASE_W / 2);
       cursorLado[lado] += CASE_W + ESPACO;
@@ -302,6 +323,26 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
       tabuas.push(noMundo(0, CASE_H / 2, -CASE_D / 2 + TABUA / 2, CASE_W, CASE_H, TABUA));
       for (let k = 0; k <= PRATELEIRAS; k++) tabuas.push(noMundo(0, k * VAO + TABUA / 2, 0, CASE_W, TABUA, CASE_D));
 
+      // fita de LED sob cada tábua (ilumina a prateleira de baixo) + luz lavando os livros
+      const vaoUtil = VAO - TABUA;
+      for (let k = 1; k <= PRATELEIRAS; k++) {
+        leds.push(noMundo(0, k * VAO - 0.007, CASE_D / 2 - 0.03, CASE_W - 0.14, 0.01, 0.012));
+        lavagens.push(noMundo(0, (k - 1) * VAO + TABUA + vaoUtil / 2, CASE_D / 2 - 0.004, CASE_W - 2 * TABUA, vaoUtil, 1));
+      }
+      // luzinhas no chão em frente à estante
+      for (const lx of [-0.75, 0.75]) ledsChao.push(noMundo(lx, 0.012, CASE_D / 2 + 0.06, 0.4, 0.015, 0.04));
+
+      // adereços no espaço que sobrou
+      const rnd = mulberry32(hash(e.areas.join('|')) + ie);
+      for (const v of e.vazios) {
+        const max = v.x0 === xMin ? 3 : 2;
+        for (const a of preencherVao(v.x0, v.x1, rnd, max)) {
+          a.obj.applyMatrix4(noMundo(a.x, base(v.prat), -0.02));
+          grupo.add(a.obj);
+          if (a.animar) animaveis.push(a.animar);
+        }
+      }
+
       // divisores finos entre subtópicos
       for (const d of e.divisores) {
         tabuas.push(noMundo(d.x, base(d.prat) + 0.15, -0.02, 0.008, 0.3, CASE_D * 0.85));
@@ -314,7 +355,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
         // cor acima de 1: o texto dourado passa do limiar do bloom e brilha
         new THREE.MeshBasicMaterial({
           map: texturaRotulo(texto, e.continua ? 'continuação' : null),
-          color: new THREE.Color(1.6, 1.5, 1.35),
+          color: new THREE.Color(1.05, 1.0, 0.95),
           fog: true,
         }),
       );
@@ -330,7 +371,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
           new THREE.PlaneGeometry(largura, 0.06),
           new THREE.MeshBasicMaterial({
             map: texturaEtiqueta(m.texto, largura / 0.06),
-            color: new THREE.Color(1.5, 1.4, 1.25),
+            color: new THREE.Color(1.0, 0.95, 0.9),
             fog: true,
           }),
         );
@@ -351,9 +392,19 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     const estante = estantes.length - 1;
     comprimento = Math.max(cursorLado[-1], cursorLado[1]);
 
-    const tabuasMesh = new THREE.InstancedMesh(geoCaixa, matMadeira, tabuas.length);
-    tabuas.forEach((m, i) => tabuasMesh.setMatrixAt(i, m));
-    grupo.add(tabuasMesh);
+    const instanciar = (geometria, material, matrizes) => {
+      const im = new THREE.InstancedMesh(geometria, material, Math.max(1, matrizes.length));
+      im.count = matrizes.length;
+      matrizes.forEach((m, i) => im.setMatrixAt(i, m));
+      im.computeBoundingSphere();
+      grupo.add(im);
+      return im;
+    };
+    instanciar(geoCaixa, matMadeira, tabuas);
+    instanciar(geoCaixa, materiais.led, leds);
+    instanciar(geoCaixa, materiais.ledFraco, ledsChao);
+    instanciar(geoPlano, materialLavagem, lavagens).renderOrder = 2;
+    grupo.add(criarEstrutura({ corredor: CORREDOR, fundoEstante: CASE_D, comprimento }));
 
     malha = new THREE.InstancedMesh(geoCaixa, matLivro, Math.max(1, lista.length));
     malha.count = lista.length;
@@ -581,6 +632,7 @@ export function criarBiblioteca(canvas, { aoEscolher, aoPassar }) {
     ceu.atualizar(relogio.elapsedTime, camera.position);
     chao.atualizar(relogio.elapsedTime, camera.position);
     magia.atualizar(dt, relogio.elapsedTime);
+    for (const animar of animaveis) animar(relogio.elapsedTime);
 
     for (const a of animacoes) {
       a.t = Math.min(a.dur, a.t + dt);

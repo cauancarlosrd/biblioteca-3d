@@ -158,11 +158,102 @@ function criarEstrelas(n = 7000) {
   return pontos;
 }
 
+
+// Planeta gigante com faixas e atmosfera azul, mais duas luas.
+const DIR_SOL = new THREE.Vector3(-0.6, 0.35, 0.7).normalize();
+
+function criarPlaneta() {
+  const grupo = new THREE.Group();
+  const corpo = new THREE.Mesh(
+    new THREE.SphereGeometry(42, 64, 48),
+    new THREE.ShaderMaterial({
+      uniforms: { uSol: { value: DIR_SOL } },
+      vertexShader: /* glsl */ `
+        varying vec3 vNormal;
+        varying vec3 vLocal;
+        varying vec3 vVista;
+        void main() {
+          vLocal = normalize(position);
+          vNormal = normalize(mat3(modelMatrix) * normal);
+          vec4 m = modelMatrix * vec4(position, 1.0);
+          vVista = normalize(cameraPosition - m.xyz);
+          gl_Position = projectionMatrix * viewMatrix * m;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uSol;
+        varying vec3 vNormal;
+        varying vec3 vLocal;
+        varying vec3 vVista;
+        ${ruido}
+        void main() {
+          float lat = vLocal.y;
+          float turb = fbm(vLocal * 4.0) * 0.35;
+          float faixas = 0.5 + 0.5 * sin((lat + turb) * 26.0);
+          vec3 claro = vec3(0.55, 0.68, 0.85);
+          vec3 escuro = vec3(0.12, 0.2, 0.38);
+          vec3 cor = mix(escuro, claro, faixas * 0.7 + fbm(vLocal * 9.0) * 0.3);
+          float luz = clamp(dot(vNormal, uSol), 0.0, 1.0);
+          float borda = pow(1.0 - max(dot(vNormal, vVista), 0.0), 3.0);
+          vec3 c = cor * (0.04 + luz * 1.1) + vec3(0.3, 0.6, 1.4) * borda * (0.25 + luz);
+          gl_FragColor = vec4(c, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    }),
+  );
+  grupo.add(corpo);
+
+  // atmosfera: halo azul aditivo em volta
+  const atmosfera = new THREE.Mesh(
+    new THREE.SphereGeometry(46, 48, 32),
+    new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      uniforms: { uSol: { value: DIR_SOL } },
+      vertexShader: /* glsl */ `
+        varying vec3 vNormal;
+        varying vec3 vVista;
+        void main() {
+          vNormal = normalize(mat3(modelMatrix) * normal);
+          vec4 m = modelMatrix * vec4(position, 1.0);
+          vVista = normalize(cameraPosition - m.xyz);
+          gl_Position = projectionMatrix * viewMatrix * m;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uSol;
+        varying vec3 vNormal;
+        varying vec3 vVista;
+        void main() {
+          float f = pow(max(dot(-vNormal, vVista), 0.0), 4.0);
+          float luz = 0.35 + 0.65 * clamp(dot(-vNormal, uSol) + 0.4, 0.0, 1.0);
+          vec3 c = vec3(0.25, 0.55, 1.3) * f * luz * 1.0;
+          gl_FragColor = vec4(c, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    }),
+  );
+  grupo.add(atmosfera);
+
+  const matLua = new THREE.MeshStandardMaterial({ color: 0x9a948c, roughness: 0.95, fog: false });
+  for (const [x, y, z, r] of [[-70, 18, 10, 3.2], [-48, -6, 30, 1.6]]) {
+    const lua = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), matLua);
+    lua.position.set(x, y, z);
+    grupo.add(lua);
+  }
+
+  // longe, à direita e acima do fim do corredor
+  grupo.position.set(55, 28, -120);
+  return grupo;
+}
+
 export function criarCeu() {
   const grupo = new THREE.Group();
   const nebulosa = criarNebulosa();
   const estrelas = criarEstrelas();
-  grupo.add(nebulosa, estrelas);
+  grupo.add(nebulosa, estrelas, criarPlaneta());
 
   return {
     grupo,
